@@ -1,0 +1,39 @@
+# Entorno de ejecución y dependencias
+venv/
+.venv/
+env/
+dist/
+build/
+*.egg-info/
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Configuración local sensible
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs del sistema
+*.log
+pld_aml_system.log
+
+# Datos crudos (OSINT y Transacciones - Contienen PII / Datos Sensibles)
+data/raw/*.csv
+
+# Resultados del procesamiento (Gran volumen y datos sensibles)
+data/processed/*.csv
+data/processed/*.npy
+data/processed/*.pkl
+data/processed/*.parquet/
+data/processed/*.txt
+
+# Permitir archivos de métricas y reportes pequeños de benchmarking
+!data/processed/clustering_metrics.csv
+!data/processed/anomaly_metrics.csv
+!data/processed/benchmarking_report.md
