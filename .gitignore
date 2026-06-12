@@ -32,6 +32,9 @@ data/processed/*.npy
 data/processed/*.pkl
 data/processed/*.parquet/
 data/processed/*.txt
+data/processed/*.png
+data/processed/entity_graphs/
+data/processed/critical_chains/
 
 # Permitir archivos de métricas y reportes pequeños de benchmarking
 !data/processed/clustering_metrics.csv

@@ -73,7 +73,13 @@ Evalúa algoritmos no supervisados de detección de outliers (Isolation Forest, 
 python -m src.anomaly_detection
 ```
 
-### Paso 5: Escalabilidad PySpark
+### Paso 5: Visualización de Grafos Individuales (Opcional)
+Genera en paralelo las visualizaciones ego concéntricas de red para cada entidad con conexiones en `data/processed/entity_graphs/`:
+```bash
+python -m src.visualization
+```
+
+### Paso 6: Escalabilidad PySpark
 Ejecuta la consolidación paralela masiva de registros:
 ```bash
 python -m src.pyspark_scaler

@@ -1,6 +1,6 @@
 # DOCUMENTACIÓN DE CUMPLIMIENTO PLD/AML (CNBV & UIF MÉXICO)
 
-Este documento detalla la justificación técnica y el fundamento regulatorio del sistema de monitoreo transaccional y OSINT proactivo, diseñado para una Fintech constituida bajo el marco legal de los Estados Unidos Mexicanos.
+Este documento detalla la justificación técnica y el fundamento  del sistema de monitoreo transaccional y OSINT.
 
 ---
 

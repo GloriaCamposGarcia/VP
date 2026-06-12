@@ -35,6 +35,20 @@ def run_benchmarking_reporting():
     Consolida las métricas de los módulos de agrupamiento semántico, detección de anomalías
     y análisis de grafos no supervisados en un reporte formal de descubrimiento de patrones.
     """
+    # Intentar generar las visualizaciones individuales por Entity ID
+    try:
+        from src.visualization import generate_all_entity_graphs
+        generate_all_entity_graphs()
+    except Exception as e:
+        logger.error(f"Error al generar las visualizaciones de red por entidad: {e}")
+
+    # Intentar ejecutar el análisis de cadenas
+    try:
+        from src.chain_analysis import run_chain_analysis
+        run_chain_analysis()
+    except Exception as e:
+        logger.error(f"Error al ejecutar el análisis de cadenas: {e}")
+
     logger.info("Iniciando consolidación de métricas de patrones no supervisados...")
     
     # Rutas de los archivos de métricas
@@ -44,6 +58,8 @@ def run_benchmarking_reporting():
     edges_path = DATA_PROCESSED_DIR / 'entity_edges.csv'
     comm_path = DATA_PROCESSED_DIR / 'graph_communities.csv'
     links_path = DATA_PROCESSED_DIR / 'hidden_entity_links.csv'
+    chains_path = DATA_PROCESSED_DIR / 'suspicious_chains.csv'
+    loops_path = DATA_PROCESSED_DIR / 'suspicious_loops.csv'
     
     # Cargar y verificar
     df_cluster = pd.read_csv(clustering_path) if clustering_path.exists() else None
@@ -52,6 +68,8 @@ def run_benchmarking_reporting():
     df_edges = pd.read_csv(edges_path) if edges_path.exists() else None
     df_comm = pd.read_csv(comm_path) if comm_path.exists() else None
     df_links = pd.read_csv(links_path) if links_path.exists() else None
+    df_chains = pd.read_csv(chains_path) if chains_path.exists() else None
+    df_loops = pd.read_csv(loops_path) if loops_path.exists() else None
     
     report_content = f"""# REPORTE DE DESCUBRIMIENTO DE PATRONES Y VÍNCULOS AML OCULTOS
 Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -132,6 +150,51 @@ Propósito: Mapear la conectividad implícita de las entidades y agruparlas en c
             report_content += to_markdown_table(df_comm.head(5))
     else:
         report_content += "\n[Datos del Grafo no disponibles. Ejecute graph_analysis.py]\n"
+
+    # 4. Sección de Visualización
+    report_content += f"""
+---
+
+## 4. ANÁLISIS VISUAL DE LA RED Y VÍNCULOS OCULTOS
+Se han generado visualizaciones de red individuales (grafo ego de 1 salto) por cada Entity ID con conexiones en el siguiente directorio:
+
+- **Directorio de Gráficos de Entidades**: [data/processed/entity_graphs/](file:///{str((DATA_PROCESSED_DIR / 'entity_graphs').as_posix())}/)
+
+Cada imagen dispone de forma concéntrica a los vecinos alrededor de la entidad consultada (nodo dorado central), permitiendo identificar claramente:
+- **Líneas grises continuas**: Conexiones físicas conocidas (URLs o hashes de contenido compartidos).
+- **Líneas rojas discontinuas**: Vínculos de similitud semántica ocultos descubiertos por embeddings.
+"""
+
+    # 5. Sección de Análisis de Cadenas
+    report_content += f"""
+---
+
+## 5. DETECCIÓN DE VÍNCULOS EN CADENA (MULTI-HOP) Y BUCLES SOSPECHOSOS
+Propósito: Rastrear caminos de relación indirectos (hasta 3 saltos) desde listas de sanciones hacia entidades ordinarias/anómalas, y detectar ciclos de simulación.
+"""
+
+    if df_chains is not None and not df_chains.empty:
+        report_content += "\n### Top 5 Caminos en Cadena Detectados a Entidades de Interés/Anómalas\n"
+        df_show_chains = df_chains[['source_blacklist_name', 'target_entity_name', 'path_hops', 'path_nodes_names', 'avg_edge_weight']].head(5)
+        df_show_chains.columns = ['Origen (Lista Negra)', 'Destino Ordinario', 'Saltos', 'Copia del Camino', 'Peso Promedio']
+        report_content += to_markdown_table(df_show_chains)
+        
+        report_content += "\n\n### Diagramas de Cadenas Críticas Generadas:\n"
+        for idx in range(min(5, len(df_chains))):
+            chain_img_path = DATA_PROCESSED_DIR / 'critical_chains' / f"critical_chain_{idx+1}.png"
+            if chain_img_path.exists():
+                report_content += f"- **Cadena #{idx+1}**: [{df_chains.iloc[idx]['source_blacklist_name']} -> {df_chains.iloc[idx]['target_entity_name']}](file:///{chain_img_path.as_posix()})\n"
+    else:
+        report_content += "\n[No se detectaron caminos de conexión en cadena significativos en este conjunto de datos]\n"
+
+    if df_loops is not None and not df_loops.empty:
+        report_content += "\n### Bucles Relacionales Cerrados Detectados (Triangulaciones)\n"
+        df_show_loops = df_loops[['cycle_length', 'blacklist_count', 'outliers_count', 'cycle_node_ids', 'cycle_node_names']].head(5)
+        df_show_loops.columns = ['Largo del Bucle', 'Semillas en Lista Negra', 'Nodos Anómalos', 'ID de Nodos', 'Nombre de Nodos']
+        report_content += to_markdown_table(df_show_loops)
+        report_content += "\n\n*Nota: Los bucles cerrados representan agrupaciones de entidades altamente vinculadas entre sí, útiles para identificar redes de empresas fantasma u operaciones simuladas.*\n"
+    else:
+        report_content += "\n[No se detectaron bucles relacionales cerrados en este conjunto de datos]\n"
 
     # Escribir el reporte en processed
     report_output_path = DATA_PROCESSED_DIR / 'benchmarking_report.md'
