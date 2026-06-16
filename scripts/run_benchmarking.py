@@ -7,7 +7,7 @@ from datetime import datetime
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
 
-from src.config import logger, DATA_PROCESSED_DIR
+from src.config import logger, RUN_DIR, RUN_DATE
 
 def to_markdown_table(df: pd.DataFrame) -> str:
     """
@@ -52,19 +52,19 @@ def run_benchmarking_reporting():
     logger.info("Iniciando consolidación de métricas de patrones no supervisados...")
     
     # Rutas de los archivos de métricas
-    clustering_path = DATA_PROCESSED_DIR / 'clustering_metrics.csv'
-    anomaly_path = DATA_PROCESSED_DIR / 'anomaly_metrics.csv'
-    nodes_path = DATA_PROCESSED_DIR / 'graph_enriched_entities.csv'
-    edges_path = DATA_PROCESSED_DIR / 'entity_edges.csv'
-    comm_path = DATA_PROCESSED_DIR / 'graph_communities.csv'
-    links_path = DATA_PROCESSED_DIR / 'hidden_entity_links.csv'
-    chains_path = DATA_PROCESSED_DIR / 'suspicious_chains.csv'
-    loops_path = DATA_PROCESSED_DIR / 'suspicious_loops.csv'
+    clustering_path = RUN_DIR / 'clustering_metrics.csv'
+    anomaly_path = RUN_DIR / 'anomaly_metrics.csv'
+    nodes_path = RUN_DIR / 'graph_enriched_entities.csv'
+    edges_path = RUN_DIR / 'entity_edges.csv'
+    comm_path = RUN_DIR / 'graph_communities.csv'
+    links_path = RUN_DIR / 'hidden_entity_links.csv'
+    chains_path = RUN_DIR / 'suspicious_chains.csv'
+    loops_path = RUN_DIR / 'suspicious_loops.csv'
     
     # Cargar y verificar
     df_cluster = pd.read_csv(clustering_path) if clustering_path.exists() else None
     df_anom = pd.read_csv(anomaly_path) if anomaly_path.exists() else None
-    df_nodes = pd.read_csv(nodes_path) if nodes_path.exists() else (pd.read_csv(DATA_PROCESSED_DIR / 'consolidated_entities.csv') if (DATA_PROCESSED_DIR / 'consolidated_entities.csv').exists() else None)
+    df_nodes = pd.read_csv(nodes_path) if nodes_path.exists() else (pd.read_csv(RUN_DIR / 'consolidated_entities.csv') if (RUN_DIR / 'consolidated_entities.csv').exists() else None)
     df_edges = pd.read_csv(edges_path) if edges_path.exists() else None
     df_comm = pd.read_csv(comm_path) if comm_path.exists() else None
     df_links = pd.read_csv(links_path) if links_path.exists() else None
@@ -158,7 +158,7 @@ Propósito: Mapear la conectividad implícita de las entidades y agruparlas en c
 ## 4. ANÁLISIS VISUAL DE LA RED Y VÍNCULOS OCULTOS
 Se han generado visualizaciones de red individuales (grafo ego de 1 salto) por cada Entity ID con conexiones en el siguiente directorio:
 
-- **Directorio de Gráficos de Entidades**: [data/processed/entity_graphs/](file:///{str((DATA_PROCESSED_DIR / 'entity_graphs').as_posix())}/)
+- **Directorio de Gráficos de Entidades**: [data/processed/run_{RUN_DATE}/entity_graphs/](file:///{str((RUN_DIR / 'entity_graphs').as_posix())}/)
 
 Cada imagen dispone de forma concéntrica a los vecinos alrededor de la entidad consultada (nodo dorado central), permitiendo identificar claramente:
 - **Líneas grises continuas**: Conexiones físicas conocidas (URLs o hashes de contenido compartidos).
@@ -181,7 +181,7 @@ Propósito: Rastrear caminos de relación indirectos (hasta 3 saltos) desde list
         
         report_content += "\n\n### Diagramas de Cadenas Críticas Generadas:\n"
         for idx in range(min(5, len(df_chains))):
-            chain_img_path = DATA_PROCESSED_DIR / 'critical_chains' / f"critical_chain_{idx+1}.png"
+            chain_img_path = RUN_DIR / 'critical_chains' / f"critical_chain_{idx+1}_{RUN_DATE}.png"
             if chain_img_path.exists():
                 report_content += f"- **Cadena #{idx+1}**: [{df_chains.iloc[idx]['source_blacklist_name']} -> {df_chains.iloc[idx]['target_entity_name']}](file:///{chain_img_path.as_posix()})\n"
     else:
@@ -197,7 +197,7 @@ Propósito: Rastrear caminos de relación indirectos (hasta 3 saltos) desde list
         report_content += "\n[No se detectaron bucles relacionales cerrados en este conjunto de datos]\n"
 
     # Escribir el reporte en processed
-    report_output_path = DATA_PROCESSED_DIR / 'benchmarking_report.md'
+    report_output_path = RUN_DIR / 'benchmarking_report.md'
     with open(report_output_path, 'w', encoding='utf-8') as f:
         f.write(report_content)
         
@@ -209,4 +209,20 @@ Propósito: Rastrear caminos de relación indirectos (hasta 3 saltos) desde list
     print("="*80 + "\n")
 
 if __name__ == '__main__':
+    import argparse
+    import os
+    import importlib
+    
+    parser = argparse.ArgumentParser(description="Reporte de Descubrimiento de Patrones AML")
+    parser.add_argument('--mode', type=str, choices=['train', 'use'], default=None,
+                        help="Modo de ejecución: 'train' para entrenamiento, 'use' para uso/inferencia.")
+    args, unknown = parser.parse_known_args()
+    
+    if args.mode:
+        os.environ["PIPELINE_MODE"] = args.mode
+        import src.config
+        importlib.reload(src.config)
+        # Actualizar la variable RUN_DIR y RUN_DATE importada
+        from src.config import RUN_DIR, RUN_DATE
+        
     run_benchmarking_reporting()

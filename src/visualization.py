@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 from pathlib import Path
-from src.config import logger, DATA_PROCESSED_DIR
+from src.config import logger, RUN_DIR, RUN_DATE
 
 def plot_single_entity_graph(args):
     """
@@ -21,6 +21,10 @@ def plot_single_entity_graph(args):
         key=lambda x: (x[1] == 'semantic_similarity', x[2]),
         reverse=True
     )
+    # Limitar a un máximo de 30 conexiones para legibilidad del grafo
+    max_conn = 30
+    if len(connections) > max_conn:
+        connections = connections[:max_conn]
     
     import matplotlib
     matplotlib.use('Agg')
@@ -72,7 +76,7 @@ def plot_single_entity_graph(args):
     nx.draw_networkx_labels(G, pos, labels=labels, font_size=8, font_color='#FFFFFF', font_family='sans-serif',
                            bbox=dict(facecolor='#1E1E1E', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
     
-    plt.title(f"Red Ego de Relaciones: {ent_name}\n({ent_id})", color='#FFFFFF', fontsize=11, fontweight='bold', pad=15)
+    plt.title(f"Red Ego de Relaciones: {ent_name}\n({ent_id}) | Fecha: {RUN_DATE}", color='#FFFFFF', fontsize=11, fontweight='bold', pad=15)
     plt.axis('off')
     
     # Leyenda compacta
@@ -84,7 +88,7 @@ def plot_single_entity_graph(args):
     ]
     plt.legend(handles=custom_legend, loc='lower center', facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8, ncol=2)
     
-    out_path = Path(output_dir_str) / f"{ent_id}.png"
+    out_path = Path(output_dir_str) / f"{ent_id}_{RUN_DATE}.png"
     plt.savefig(out_path, dpi=120, facecolor='#1E1E1E', bbox_inches='tight')
     plt.close(fig)
 
@@ -94,11 +98,11 @@ def generate_all_entity_graphs():
     """
     logger.info("Iniciando generación masiva de grafos individuales por Entity ID...")
     
-    nodes_path = DATA_PROCESSED_DIR / 'graph_enriched_entities.csv'
+    nodes_path = RUN_DIR / 'graph_enriched_entities.csv'
     if not nodes_path.exists():
-        nodes_path = DATA_PROCESSED_DIR / 'consolidated_entities.csv'
+        nodes_path = RUN_DIR / 'consolidated_entities.csv'
         
-    edges_path = DATA_PROCESSED_DIR / 'entity_edges.csv'
+    edges_path = RUN_DIR / 'entity_edges.csv'
     
     if not nodes_path.exists() or not edges_path.exists():
         raise FileNotFoundError("No se encontraron los datos del grafo. Ejecute el pipeline primero.")
@@ -107,27 +111,43 @@ def generate_all_entity_graphs():
     df_edges = pd.read_csv(edges_path)
     
     # Crear el directorio extra
-    output_dir = DATA_PROCESSED_DIR / 'entity_graphs'
+    output_dir = RUN_DIR / 'entity_graphs'
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Directorio de visualizaciones individuales verificado en: {output_dir}")
     
     name_map = dict(zip(df_nodes['entity_id'], df_nodes['entity_name']))
     
-    # Agrupar aristas por nodo para evitar búsquedas lentas
+    # Agrupar aristas por nodo para evitar búsquedas lentas (optimizado con zip en vez de iterrows)
     from collections import defaultdict
     adj = defaultdict(list)
-    for _, row in df_edges.iterrows():
-        s, t, rel, w = row['source'], row['target'], row['relation_type'], row['weight']
+    for s, t, rel, w in zip(df_edges['source'].values, df_edges['target'].values, df_edges['relation_type'].values, df_edges['weight'].values):
         adj[s].append((t, rel, w, True))
         adj[t].append((s, rel, w, False))
         
     # Recopilar tareas para el Pool
     tasks = []
-    for ent_id in df_nodes['entity_id'].dropna().unique():
+    # Ordenar nodos para priorizar entidades sospechosas, en lista negra o con mayor centralidad PageRank
+    df_nodes_sorted = df_nodes.copy()
+    sort_cols = []
+    if 'is_suspicious_analyst' in df_nodes_sorted.columns:
+        sort_cols.append('is_suspicious_analyst')
+    if 'pagerank' in df_nodes_sorted.columns:
+        sort_cols.append('pagerank')
+        
+    if sort_cols:
+        df_nodes_sorted = df_nodes_sorted.sort_values(by=sort_cols, ascending=[False] * len(sort_cols))
+        
+    for ent_id in df_nodes_sorted['entity_id'].dropna().unique():
         connections = adj[ent_id]
         if connections:
             name = name_map.get(ent_id, ent_id)
             tasks.append((ent_id, name, connections, str(output_dir), name_map))
+            
+    # Limitar la generación a un máximo de 10 redes de ego críticas para optimizar rendimiento y almacenamiento
+    max_graphs = 10
+    if len(tasks) > max_graphs:
+        logger.info(f"Limitando visualizaciones de {len(tasks)} a las {max_graphs} más críticas para optimizar rendimiento.")
+        tasks = tasks[:max_graphs]
             
     logger.info(f"Total de entidades conectadas a dibujar: {len(tasks)}")
     

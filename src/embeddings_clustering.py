@@ -11,14 +11,15 @@ from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import normalize
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from src.config import logger, DATA_PROCESSED_DIR, HF_EMBEDDING_MODEL, EMBEDDING_BACKEND
+import joblib
+from src.config import logger, RUN_DIR, HF_EMBEDDING_MODEL, EMBEDDING_BACKEND, SHARED_DIR, PIPELINE_MODE
 
 def generate_embeddings(texts: pd.Series) -> Tuple[np.ndarray, str]:
     """
     Genera embeddings para la lista de textos utilizando SentenceTransformers o TF-IDF.
     Implementa caché en disco para evitar re-cálculos costosos.
     """
-    cache_path = DATA_PROCESSED_DIR / 'entity_embeddings_cache.npy'
+    cache_path = RUN_DIR / 'entity_embeddings_cache.npy'
     
     if cache_path.exists():
         logger.info(f"Cargando embeddings desde el caché: {cache_path}")
@@ -176,8 +177,8 @@ def execute_clustering_pipeline() -> pd.DataFrame:
     detecta vínculos AML ocultos mediante similitud de coseno y
     calcula anomalías en su información de forma no supervisada.
     """
-    entities_path = DATA_PROCESSED_DIR / 'consolidated_entities.csv'
-    evidence_path = DATA_PROCESSED_DIR / 'processed_evidence_items.csv'
+    entities_path = RUN_DIR / 'consolidated_entities.csv'
+    evidence_path = RUN_DIR / 'processed_evidence_items.csv'
     
     if not entities_path.exists():
         raise FileNotFoundError(f"No se encontró {entities_path}. Ejecuta primero data_processing.py")
@@ -221,17 +222,128 @@ def execute_clustering_pipeline() -> pd.DataFrame:
 
     # Obtener embeddings a nivel de perfil de entidad
     X, backend = generate_embeddings(df_entities['entity_profile_text'])
+    n_entities = len(df_entities)
     
-    # Ejecutar clustering sobre los embeddings de entidades
-    metrics, labels = run_clustering_benchmarking(X)
-    
-    # Reducción dimensional para visualizaciones
-    X_pca, X_tsne = reduce_dimensions(X)
-    
+    kmeans_model_path = SHARED_DIR / "models" / "kmeans.pkl"
+    pca_model_path = SHARED_DIR / "models" / "pca.pkl"
+    iso_forest_model_path = SHARED_DIR / "models" / "iso_forest_embeddings.pkl"
+
+    if PIPELINE_MODE == "train":
+        logger.info("Fase de ENTRENAMIENTO activa. Ajustando modelos de clustering...")
+        # Ejecutar clustering sobre los embeddings de entidades (benchmarking)
+        metrics, labels = run_clustering_benchmarking(X)
+        
+        # Ajustar modelos definitivos para guardar
+        n_clusters_kmeans = min(5, n_entities) if n_entities > 1 else 1
+        kmeans_model = KMeans(n_clusters=n_clusters_kmeans, random_state=42, n_init=10)
+        kmeans_model.fit(X)
+        
+        pca_model = PCA(n_components=2, random_state=42)
+        X_pca = pca_model.fit_transform(X)
+        
+        from sklearn.ensemble import IsolationForest
+        iso_forest_model = IsolationForest(contamination='auto', random_state=42, n_jobs=-1)
+        iso_forest_model.fit(X)
+        
+        # Serializar modelos en el registro compartido
+        joblib.dump(kmeans_model, kmeans_model_path)
+        joblib.dump(pca_model, pca_model_path)
+        joblib.dump(iso_forest_model, iso_forest_model_path)
+        logger.info(f"Modelos de clustering serializados con éxito en: {SHARED_DIR / 'models'}")
+        
+        # Reducción t-SNE para visualización
+        perp = min(30, max(5, n_entities - 1))
+        tsne = TSNE(n_components=2, random_state=42, max_iter=300, perplexity=perp, n_jobs=-1)
+        X_tsne = tsne.fit_transform(X)
+        
+        kmeans_labels = labels['K-Means']
+        hdbscan_labels = labels['HDBSCAN']
+        
+        # Predicción Isolation Forest
+        raw_scores = iso_forest_model.score_samples(X)
+        df_entities['anomaly_score_embedding'] = -raw_scores
+        df_entities['is_embedding_outlier'] = np.where(iso_forest_model.predict(X) == -1, 1, 0)
+        
+        # Distancia al centroide
+        distances = kmeans_model.transform(X)
+        dist_to_centroid = np.array([distances[idx, cluster] for idx, cluster in enumerate(kmeans_labels)]) if n_entities > 1 else np.zeros(n_entities)
+        df_entities['distance_to_centroid'] = dist_to_centroid
+
+    else: # PIPELINE_MODE == "use"
+        logger.info("Fase de USO/INFERENCIA activa. Cargando modelos pre-entrenados...")
+        if not kmeans_model_path.exists() or not pca_model_path.exists() or not iso_forest_model_path.exists():
+            raise FileNotFoundError(
+                "Faltan modelos en el registro compartido. Debe ejecutar el pipeline de entrenamiento primero: "
+                "python scripts/train_pipeline.py"
+            )
+            
+        kmeans_model = joblib.load(kmeans_model_path)
+        pca_model = joblib.load(pca_model_path)
+        iso_forest_model = joblib.load(iso_forest_model_path)
+        
+        # Inferencia con KMeans
+        kmeans_labels = kmeans_model.predict(X)
+        
+        # Inferencia con IsolationForest
+        raw_scores = iso_forest_model.score_samples(X)
+        df_entities['anomaly_score_embedding'] = -raw_scores
+        df_entities['is_embedding_outlier'] = np.where(iso_forest_model.predict(X) == -1, 1, 0)
+        
+        # Distancia al centroide
+        distances = kmeans_model.transform(X)
+        dist_to_centroid = np.array([distances[idx, cluster] for idx, cluster in enumerate(kmeans_labels)]) if n_entities > 1 else np.zeros(n_entities)
+        df_entities['distance_to_centroid'] = dist_to_centroid
+        
+        # HDBSCAN (Ajuste transductivo local para el lote actual)
+        min_cluster = min(10, max(2, n_entities // 3))
+        min_samp = min(5, max(1, min_cluster // 2))
+        hdb = HDBSCAN(min_cluster_size=min_cluster, min_samples=min_samp, metric='euclidean')
+        hdbscan_labels = hdb.fit_predict(X)
+        
+        # Reducción dimensional con PCA e inferencia
+        X_pca = pca_model.transform(X)
+        
+        # t-SNE fit_transform local para lote actual
+        perp = min(30, max(5, n_entities - 1))
+        tsne = TSNE(n_components=2, random_state=42, max_iter=300, perplexity=perp, n_jobs=-1)
+        X_tsne = tsne.fit_transform(X)
+        
+        # Generar métricas de evaluación para el lote actual (MLOps monitoring)
+        km_sil = float(silhouette_score(X, kmeans_labels, metric='euclidean')) if len(np.unique(kmeans_labels)) > 1 else np.nan
+        km_cohesion = calculate_cohesion(X, kmeans_labels)
+        
+        non_noise_mask = hdbscan_labels != -1
+        num_clusters_hdb = len([c for c in np.unique(hdbscan_labels) if c != -1])
+        noise_count = int(np.sum(hdbscan_labels == -1))
+        
+        if num_clusters_hdb >= 2 and np.sum(non_noise_mask) > num_clusters_hdb:
+            hdb_sil = float(silhouette_score(X[non_noise_mask], hdbscan_labels[non_noise_mask], metric='euclidean'))
+            hdb_cohesion = calculate_cohesion(X, hdbscan_labels)
+        else:
+            hdb_sil = np.nan
+            hdb_cohesion = np.nan
+            
+        metrics = {
+            'K-Means': {
+                'Silhouette': km_sil,
+                'Cohesion': km_cohesion,
+                'Time_Secs': 0.0,
+                'Noise_Count': 0,
+                'Num_Clusters': len(np.unique(kmeans_labels))
+            },
+            'HDBSCAN': {
+                'Silhouette': hdb_sil,
+                'Cohesion': hdb_cohesion,
+                'Time_Secs': 0.0,
+                'Noise_Count': noise_count,
+                'Num_Clusters': num_clusters_hdb
+            }
+        }
+
     # Guardar etiquetas de clústeres en los datos de entidades
-    df_entities['kmeans_cluster'] = labels['K-Means']
-    df_entities['hdbscan_cluster'] = labels['HDBSCAN']
-    df_entities['predominant_cluster'] = labels['K-Means'] # Mantener por compatibilidad
+    df_entities['kmeans_cluster'] = kmeans_labels
+    df_entities['hdbscan_cluster'] = hdbscan_labels
+    df_entities['predominant_cluster'] = kmeans_labels # Mantener por compatibilidad
     
     # Guardar coordenadas dimensionales
     df_entities['pca_x'] = X_pca[:, 0]
@@ -255,7 +367,6 @@ def execute_clustering_pipeline() -> pd.DataFrame:
     similarity_matrix = cosine_similarity(X)
     
     links = []
-    n_entities = len(df_entities)
     for i in range(n_entities):
         for j in range(i + 1, n_entities):
             sim = float(similarity_matrix[i, j])
@@ -273,12 +384,12 @@ def execute_clustering_pipeline() -> pd.DataFrame:
     
     df_links = pd.DataFrame(links)
     if not df_links.empty:
-        links_output_path = DATA_PROCESSED_DIR / 'hidden_entity_links.csv'
+        links_output_path = RUN_DIR / 'hidden_entity_links.csv'
         df_links.to_csv(links_output_path, index=False)
         logger.info(f"Vínculos semánticos ocultos guardados en: {links_output_path} (Total: {len(df_links)})")
         
         # Inyectar estos vínculos en el grafo relacional (entity_edges.csv)
-        edges_path = DATA_PROCESSED_DIR / 'entity_edges.csv'
+        edges_path = RUN_DIR / 'entity_edges.csv'
         if edges_path.exists():
             df_edges = pd.read_csv(edges_path)
         else:
@@ -294,38 +405,13 @@ def execute_clustering_pipeline() -> pd.DataFrame:
         logger.info("No se encontraron vínculos de alta similitud semántica (>=0.70).")
         # Asegurar archivo vacío pero con columnas correctas
         pd.DataFrame(columns=['source', 'source_name', 'target', 'target_name', 'relation_type', 'weight']).to_csv(
-            DATA_PROCESSED_DIR / 'hidden_entity_links.csv', index=False
+            RUN_DIR / 'hidden_entity_links.csv', index=False
         )
 
-    # 2. DETECCIÓN DE ANOMALÍAS EN LA INFORMACIÓN (No Supervisado)
-    logger.info("Calculando indicadores de anomalías no supervisadas sobre perfiles de entidades...")
-    from sklearn.ensemble import IsolationForest
-    
-    # Isolation Forest sobre embeddings
-    iso_forest = IsolationForest(contamination='auto', random_state=42, n_jobs=-1)
-    iso_forest.fit(X)
-    
-    # El score de anomalía (mayor es más inusual)
-    raw_scores = iso_forest.score_samples(X)
-    df_entities['anomaly_score_embedding'] = -raw_scores
-    df_entities['is_embedding_outlier'] = np.where(iso_forest.predict(X) == -1, 1, 0)
-    
-    # Calcular distancia al centroide del clúster K-Means correspondiente
-    # Primero obtenemos el objeto KMeans para calcular distancias
-    n_clusters_kmeans = min(5, n_entities) if n_entities > 1 else 1
-    if n_entities > 1:
-        kmeans = KMeans(n_clusters=n_clusters_kmeans, random_state=42, n_init=10)
-        kmeans.fit(X)
-        distances = kmeans.transform(X) # Distancia a todos los centroides
-        assigned_clusters = labels['K-Means']
-        dist_to_centroid = np.array([distances[idx, cluster] for idx, cluster in enumerate(assigned_clusters)])
-        df_entities['distance_to_centroid'] = dist_to_centroid
-    else:
-        df_entities['distance_to_centroid'] = 0.0
-
+    # El Isolation Forest ya se corrió arriba y guardó anomalías
     # Guardar catálogo consolidado de entidades actualizado
-    df_entities.to_csv(DATA_PROCESSED_DIR / 'consolidated_entities.csv', index=False)
-    logger.info(f"Catálogo consolidado de entidades actualizado en: {DATA_PROCESSED_DIR / 'consolidated_entities.csv'}")
+    df_entities.to_csv(RUN_DIR / 'consolidated_entities.csv', index=False)
+    logger.info(f"Catálogo consolidado de entidades actualizado en: {RUN_DIR / 'consolidated_entities.csv'}")
 
     # Generar tabla comparativa en dataframe
     rows = []
@@ -339,7 +425,7 @@ def execute_clustering_pipeline() -> pd.DataFrame:
             'Tiempo_Ejecucion_Segs': data['Time_Secs']
         })
     df_bench = pd.DataFrame(rows)
-    df_bench.to_csv(DATA_PROCESSED_DIR / 'clustering_metrics.csv', index=False)
+    df_bench.to_csv(RUN_DIR / 'clustering_metrics.csv', index=False)
     
     logger.info("\n--- METRICAS DE CLUSTERING DE PERFILES DE ENTIDAD ---")
     logger.info(f"\n{df_bench.to_string(index=False)}")

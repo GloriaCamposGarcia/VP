@@ -7,7 +7,7 @@ El sistema procesa información proveniente de herramientas de recolección OSIN
 ## 1. ESTRUCTURA DE CARPETAS
 
 La distribución de archivos del proyecto se organiza de la siguiente manera:
-- **`data/raw/`**: Contiene los archivos CSV de entrada crudos (`evidence_items.csv` y `entity_source_results.csv`).
+- **`data/raw/`**: Contiene los archivos CSV de entrada crudos (`evidence_items.csv`, `entity_source_results.csv` y `entity_match_summary.csv`).
 - **`data/processed/`**: Almacena los resultados intermedios y finales del procesamiento, embeddings en caché, métricas y los modelos serializados (`.pkl`, y `.parquet`).
 - **`src/`**: Carpeta contenedora de los módulos lógicos del sistema:
   - `config.py`: Carga la configuración del archivo `.env` e inicializa el logging.

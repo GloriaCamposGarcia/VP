@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import logging
+from datetime import datetime
 
 try:
     from dotenv import load_dotenv
@@ -22,6 +23,28 @@ DATA_PROCESSED_DIR = PROJECT_ROOT / os.getenv("DATA_PROCESSED_DIR", "data/proces
 # Asegurar que las carpetas existan
 DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+# Directorios de entrenamiento, uso y compartidos (MLOps / Compliance)
+SHARED_DIR = DATA_PROCESSED_DIR / "shared"
+TRAIN_RUNS_DIR = DATA_PROCESSED_DIR / "train" / "runs"
+USE_RUNS_DIR = DATA_PROCESSED_DIR / "use" / "runs"
+
+SHARED_DIR.mkdir(parents=True, exist_ok=True)
+(SHARED_DIR / "models").mkdir(parents=True, exist_ok=True)
+TRAIN_RUNS_DIR.mkdir(parents=True, exist_ok=True)
+USE_RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Modo de ejecución por defecto: 'use' o 'train'
+PIPELINE_MODE = os.getenv("PIPELINE_MODE", "use").strip().lower()
+
+RUN_DATE = datetime.now().strftime('%Y-%m-%d')
+
+if PIPELINE_MODE == "train":
+    RUN_DIR = TRAIN_RUNS_DIR / f"run_{RUN_DATE}"
+else:
+    RUN_DIR = USE_RUNS_DIR / f"run_{RUN_DATE}"
+
+RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 # Parámetros de embeddings
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "sentence-transformers").strip().lower()

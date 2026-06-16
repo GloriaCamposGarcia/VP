@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 from pathlib import Path
-from src.config import logger, DATA_PROCESSED_DIR
+from src.config import logger, RUN_DIR, RUN_DATE
 
 def is_blacklist_node(node_id: str) -> bool:
     """
@@ -25,8 +25,8 @@ def run_chain_analysis():
     """
     logger.info("Iniciando análisis de cadenas relacionales y caminos multi-salto (AML)...")
     
-    nodes_path = DATA_PROCESSED_DIR / 'graph_enriched_entities.csv'
-    edges_path = DATA_PROCESSED_DIR / 'entity_edges.csv'
+    nodes_path = RUN_DIR / 'graph_enriched_entities.csv'
+    edges_path = RUN_DIR / 'entity_edges.csv'
     
     if not nodes_path.exists() or not edges_path.exists():
         raise FileNotFoundError("Debe ejecutar los scripts previos del pipeline para generar los archivos consolidados.")
@@ -35,7 +35,7 @@ def run_chain_analysis():
     df_edges = pd.read_csv(edges_path)
     
     # Asegurar que se carguen las columnas de anomalía desde consolidated_entities.csv si no están en graph_enriched_entities.csv
-    consolidated_path = DATA_PROCESSED_DIR / 'consolidated_entities.csv'
+    consolidated_path = RUN_DIR / 'consolidated_entities.csv'
     if consolidated_path.exists():
         df_consolidated = pd.read_csv(consolidated_path)
         anomaly_cols = ['entity_id', 'anomaly_isolationforest', 'anomaly_oneclasssvm', 'anomaly_localoutlierfactor', 'is_embedding_outlier']
@@ -162,7 +162,7 @@ def run_chain_analysis():
             ascending=[False, True, False]
         ).reset_index(drop=True)
         
-        chains_path = DATA_PROCESSED_DIR / 'suspicious_chains.csv'
+        chains_path = RUN_DIR / 'suspicious_chains.csv'
         df_chains.to_csv(chains_path, index=False)
         logger.info(f"Se detectaron {len(df_chains)} caminos sospechosos en cadena. Reporte guardado en: {chains_path}")
     else:
@@ -171,7 +171,7 @@ def run_chain_analysis():
             'source_blacklist_id', 'source_blacklist_name', 'target_entity_id', 'target_entity_name',
             'is_target_anomalous', 'path_hops', 'path_nodes_ids', 'path_nodes_names', 'path_relations', 'avg_edge_weight'
         ])
-        df_chains.to_csv(DATA_PROCESSED_DIR / 'suspicious_chains.csv', index=False)
+        df_chains.to_csv(RUN_DIR / 'suspicious_chains.csv', index=False)
 
     # 3. DETECCIÓN DE BUCLES/CICLOS
     # Detectar ciclos relacionales cerrados en la red que involucren nodos ordinarios
@@ -204,12 +204,12 @@ def run_chain_analysis():
             by=['blacklist_count', 'outliers_count', 'cycle_length'], 
             ascending=[False, False, True]
         ).reset_index(drop=True)
-        cycles_path = DATA_PROCESSED_DIR / 'suspicious_loops.csv'
+        cycles_path = RUN_DIR / 'suspicious_loops.csv'
         df_cycles.to_csv(cycles_path, index=False)
         logger.info(f"Se detectaron {len(df_cycles)} bucles relacionales cerrados. Reporte guardado en: {cycles_path}")
     else:
         pd.DataFrame(columns=['cycle_length', 'blacklist_count', 'outliers_count', 'cycle_node_ids', 'cycle_node_names']).to_csv(
-            DATA_PROCESSED_DIR / 'suspicious_loops.csv', index=False
+            RUN_DIR / 'suspicious_loops.csv', index=False
         )
 
     # 4. GENERACIÓN DE DIAGRAMAS PARA LAS CADENAS MÁS CRÍTICAS
@@ -219,7 +219,7 @@ def run_chain_analysis():
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         
-        output_dir = DATA_PROCESSED_DIR / 'critical_chains'
+        output_dir = RUN_DIR / 'critical_chains'
         output_dir.mkdir(parents=True, exist_ok=True)
         
         top_chains = df_chains.head(5)
@@ -311,12 +311,12 @@ def run_chain_analysis():
                 bbox=dict(facecolor='#1E1E1E', alpha=0.9, edgecolor='#555555', boxstyle='round,pad=0.3')
             )
             
-            plt.title(f"Cadena Crítica #{idx+1} (Saltos: {row['path_hops']})\nOrigen: Lista Negra de Control", color='#FFFFFF', fontsize=10, fontweight='bold', pad=15)
+            plt.title(f"Cadena Crítica #{idx+1} (Saltos: {row['path_hops']})\nOrigen: Lista Negra de Control | Fecha: {RUN_DATE}", color='#FFFFFF', fontsize=10, fontweight='bold', pad=15)
             plt.axis('off')
             plt.xlim(-0.8, float(len(path_nodes) - 1) * 2.0 + 0.8)
             plt.ylim(-0.8, 0.8)
             
-            out_img_path = output_dir / f"critical_chain_{idx+1}.png"
+            out_img_path = output_dir / f"critical_chain_{idx+1}_{RUN_DATE}.png"
             plt.savefig(out_img_path, dpi=120, facecolor='#1E1E1E', bbox_inches='tight')
             plt.close(fig)
             logger.info(f"Imagen de cadena guardada: {out_img_path}")

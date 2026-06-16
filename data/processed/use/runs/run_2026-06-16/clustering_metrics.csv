@@ -1,0 +1,3 @@
+Algoritmo,Num_Clusters,Ruido_Detectado,Silhouette_Score,Cohesion,Tiempo_Ejecucion_Segs
+K-Means,5,0,0.06706582754850388,0.6786765273253508,0.0
+HDBSCAN,2,859,0.04089488461613655,0.7377425890462213,0.0

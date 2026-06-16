@@ -10,14 +10,14 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
 from networkx.algorithms.community import louvain_communities
 
-from src.config import logger, DATA_PROCESSED_DIR
+from src.config import logger, RUN_DIR
 
 def load_graph_inputs() -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Carga el listado de entidades y las aristas reales del grafo desde la carpeta de datos procesados.
     """
-    nodes_path = DATA_PROCESSED_DIR / 'consolidated_entities.csv'
-    edges_path = DATA_PROCESSED_DIR / 'entity_edges.csv'
+    nodes_path = RUN_DIR / 'consolidated_entities.csv'
+    edges_path = RUN_DIR / 'entity_edges.csv'
     
     if not nodes_path.exists() or not edges_path.exists():
         raise FileNotFoundError("Faltan archivos procesados. Ejecute el script de procesamiento primero.")
@@ -174,8 +174,8 @@ def execute_unsupervised_graph_analysis() -> Tuple[pd.DataFrame, pd.DataFrame]:
         df_nodes_enriched[f'gnn_feature_{i}'] = H_relational[:, i]
         
     # Guardar los datasets enriquecidos en processed/
-    df_nodes_enriched.to_csv(DATA_PROCESSED_DIR / 'graph_enriched_entities.csv', index=False)
-    df_comm.to_csv(DATA_PROCESSED_DIR / 'graph_communities.csv', index=False)
+    df_nodes_enriched.to_csv(RUN_DIR / 'graph_enriched_entities.csv', index=False)
+    df_comm.to_csv(RUN_DIR / 'graph_communities.csv', index=False)
     
     logger.info("Pipeline de grafos no supervisado completado exitosamente.")
     logger.info(f"Top 5 comunidades por tamaño:\n{df_comm.head(5).to_string(index=False)}")

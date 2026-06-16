@@ -8,7 +8,7 @@ from typing import Optional
 os.environ['PYSPARK_PYTHON'] = sys.executable
 os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
 
-from src.config import logger, DATA_RAW_DIR, DATA_PROCESSED_DIR
+from src.config import logger, DATA_RAW_DIR, DATA_PROCESSED_DIR, RUN_DIR
 
 try:
     from pyspark.sql import SparkSession
@@ -62,9 +62,10 @@ class PySparkAMLScaler:
             logger.info("Cargando datasets crudos con Pandas...")
             df_sources_pd = pd.read_csv(DATA_RAW_DIR / 'entity_source_results.csv')
             df_evidence_pd = pd.read_csv(DATA_RAW_DIR / 'evidence_items.csv')
+            df_match_pd = pd.read_csv(DATA_RAW_DIR / 'entity_match_summary.csv')
             
             # Normalizar tipos de datos para Spark
-            for df_tmp in [df_sources_pd, df_evidence_pd]:
+            for df_tmp in [df_sources_pd, df_evidence_pd, df_match_pd]:
                 for col in df_tmp.select_dtypes(include=['object']).columns:
                     df_tmp[col] = df_tmp[col].fillna("").astype(str)
                     
@@ -72,6 +73,7 @@ class PySparkAMLScaler:
             logger.info("Convirtiendo DataFrames a PySpark...")
             df_sources = self.spark.createDataFrame(df_sources_pd)
             df_evidence = self.spark.createDataFrame(df_evidence_pd)
+            df_match = self.spark.createDataFrame(df_match_pd)
             
             logger.info("Esquema de resultados de fuentes cargado en Spark:")
             df_sources.printSchema()
@@ -94,13 +96,23 @@ class PySparkAMLScaler:
             # 3. Join en paralelo para consolidación
             df_consolidated = df_sources_agg.join(df_evidence_agg, on="entity_id", how="full")
             
+            # Seleccionar y procesar match summary
+            df_match_sel = df_match.select(
+                F.col("entity_id"),
+                F.col("match_count").cast(IntegerType()).alias("match_count"),
+                F.col("sources_hit")
+            )
+            df_consolidated = df_consolidated.join(df_match_sel, on="entity_id", how="full")
+            
             # Rellenar nulos de agregación
             df_consolidated = df_consolidated.na.fill({
                 "sources_evaluated": 0,
                 "sources_with_hallazgo": 0,
                 "max_identity_score": 0.0,
                 "evidence_items": 0,
-                "review_items": 0
+                "review_items": 0,
+                "match_count": 0,
+                "sources_hit": ""
             })
             
             # Asignar lógica de decisión general
@@ -115,7 +127,7 @@ class PySparkAMLScaler:
             df_consolidated.show(5)
             
             # 4. Guardar los resultados en formato optimizado Parquet para almacenamiento masivo
-            output_parquet_path = str(DATA_PROCESSED_DIR / 'pyspark_entities.parquet')
+            output_parquet_path = str(RUN_DIR / 'pyspark_entities.parquet')
             logger.info(f"Guardando resultados escalables en Parquet: {output_parquet_path}")
             df_consolidated.write.mode("overwrite").parquet(output_parquet_path)
             

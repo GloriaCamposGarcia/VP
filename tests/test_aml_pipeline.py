@@ -43,12 +43,24 @@ class TestAMLPipeline(unittest.TestCase):
             }
         ])
 
+        self.df_match_mock = pd.DataFrame([
+            {
+                'entity_id': 'OFAC-01',
+                'entity_name': 'JUAN PEREZ',
+                'input_country': 'MEX',
+                'input_entity_type': 'PF',
+                'sources_hit': 'OFAC_SDN',
+                'match_count': 2,
+                'matches_json': '[]'
+            }
+        ])
+
     def test_entity_catalog_parsing(self):
         """
         Verifica que el catálogo de entidades extraiga y normalice los registros correctamente
         desde la representación serializada de query_used.
         """
-        df_entities = parse_entity_catalog(self.df_sources_mock)
+        df_entities = parse_entity_catalog(self.df_sources_mock, self.df_evidence_mock, self.df_match_mock)
         self.assertEqual(len(df_entities), 2)
         self.assertIn('entity_id', df_entities.columns)
         self.assertIn('entity_name', df_entities.columns)
@@ -60,14 +72,16 @@ class TestAMLPipeline(unittest.TestCase):
         Verifica que la agregación cuantitativa a nivel entidad se consolide adecuadamente,
         así como el cálculo de la decisión general.
         """
-        df_entities = parse_entity_catalog(self.df_sources_mock)
-        df_consolidated = consolidate_entity_features(df_entities, self.df_sources_mock, self.df_evidence_mock)
+        df_entities = parse_entity_catalog(self.df_sources_mock, self.df_evidence_mock, self.df_match_mock)
+        df_consolidated = consolidate_entity_features(df_entities, self.df_sources_mock, self.df_evidence_mock, self.df_match_mock)
         
         # Validar registros agregados
         self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'evidence_items'].values[0], 2)
         self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'max_identity_score'].values[0], 0.9)
         self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'overall_decision'].values[0], 'needs_review')
         self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-02', 'overall_decision'].values[0], 'no_match')
+        self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'match_count'].values[0], 2)
+        self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'sources_hit'].values[0], 'OFAC_SDN')
 
     def test_calculate_cohesion_metric(self):
         """
@@ -81,6 +95,18 @@ class TestAMLPipeline(unittest.TestCase):
         # Debe retornar un número flotante válido y menor que la distancia inter-clúster
         self.assertTrue(cohesion > 0.0)
         self.assertTrue(cohesion < 1.0)
+
+    def test_pipeline_modes_and_registry(self):
+        """
+        Valida que los directorios del registro compartido y las corridas por modo
+        se definan correctamente de acuerdo a las variables del sistema.
+        """
+        from src.config import SHARED_DIR, TRAIN_RUNS_DIR, USE_RUNS_DIR
+        
+        self.assertTrue(SHARED_DIR.exists())
+        self.assertTrue((SHARED_DIR / "models").exists())
+        self.assertTrue(TRAIN_RUNS_DIR.exists())
+        self.assertTrue(USE_RUNS_DIR.exists())
 
 if __name__ == '__main__':
     unittest.main()
