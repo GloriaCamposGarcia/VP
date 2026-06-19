@@ -98,76 +98,85 @@ def calculate_cohesion(X: np.ndarray, labels: np.ndarray) -> float:
 
 def run_clustering_benchmarking(X: np.ndarray) -> Tuple[Dict[str, Any], Dict[str, np.ndarray]]:
     """
-    Se ejecutan los algoritmos de K-Means y HDBSCAN para realizar un benchmarking cuantitativo.
-    Se evalúan el coeficiente de silueta y la cohesión.
+    Se ejecutan los algoritmos de K-Means, MiniBatchKMeans, GaussianMixture, Birch, HDBSCAN y
+    Agglomerative para realizar un benchmarking cuantitativo. Se evalúan el coeficiente de silueta y la cohesión.
     """
+    from sklearn.cluster import MiniBatchKMeans, Birch, AgglomerativeClustering
+    from sklearn.mixture import GaussianMixture
+    
     logger.info("Benchmarking de clustering en progreso.")
     results = {}
     cluster_labels = {}
 
     n_samples = X.shape[0]
     n_clusters_kmeans = min(5, n_samples) if n_samples > 1 else 1
-
-    # 1. K-Means
-    logger.info(f"Entrenamiento K-Means en progreso (clústeres: {n_clusters_kmeans}).")
-    t0 = time.time()
-    if n_samples > 1:
-        kmeans = KMeans(n_clusters=n_clusters_kmeans, random_state=42, n_init=10)
-        km_labels = kmeans.fit_predict(X)
-        km_time = time.time() - t0
-        cluster_labels['K-Means'] = km_labels
-        
-        km_sil = float(silhouette_score(X, km_labels, metric='euclidean'))
-        km_cohesion = calculate_cohesion(X, km_labels)
-    else:
-        km_labels = np.zeros(n_samples, dtype=int)
-        km_time = time.time() - t0
-        cluster_labels['K-Means'] = km_labels
-        km_sil = np.nan
-        km_cohesion = np.nan
-
-    results['K-Means'] = {
-        'Silhouette': km_sil,
-        'Cohesion': km_cohesion,
-        'Time_Secs': km_time,
-        'Noise_Count': 0,
-        'Num_Clusters': len(np.unique(km_labels))
-    }
-    logger.info(f"K-Means finalizado. Silueta: {km_sil:.4f}, Cohesión: {km_cohesion:.4f}")
-
-    # 2. HDBSCAN
-    logger.info("Entrenamiento HDBSCAN en progreso.")
-    t0 = time.time()
-    # Se definen min_cluster_size y min_samples dinámicamente
+    
+    # Se definen los parámetros de HDBSCAN dinámicamente
     min_cluster = min(10, max(2, n_samples // 3))
     min_samp = min(5, max(1, min_cluster // 2))
-    
-    logger.info(f"HDBSCAN params: min_cluster_size={min_cluster}, min_samples={min_samp}")
-    hdb = HDBSCAN(min_cluster_size=min_cluster, min_samples=min_samp, metric='euclidean')
-    hdb_labels = hdb.fit_predict(X)
-    hdb_time = time.time() - t0
-    cluster_labels['HDBSCAN'] = hdb_labels
 
-    # Métricas de evaluación para HDBSCAN
-    non_noise_mask = hdb_labels != -1
-    num_clusters = len([c for c in np.unique(hdb_labels) if c != -1])
-    noise_count = int(np.sum(hdb_labels == -1))
-    
-    if num_clusters >= 2 and np.sum(non_noise_mask) > num_clusters:
-        hdb_sil = float(silhouette_score(X[non_noise_mask], hdb_labels[non_noise_mask], metric='euclidean'))
-        hdb_cohesion = calculate_cohesion(X, hdb_labels)
-    else:
-        hdb_sil = np.nan
-        hdb_cohesion = np.nan
-
-    results['HDBSCAN'] = {
-        'Silhouette': hdb_sil,
-        'Cohesion': hdb_cohesion,
-        'Time_Secs': hdb_time,
-        'Noise_Count': noise_count,
-        'Num_Clusters': num_clusters
+    models = {
+        'K-Means': KMeans(n_clusters=n_clusters_kmeans, random_state=42, n_init=10),
+        'MiniBatchKMeans': MiniBatchKMeans(n_clusters=n_clusters_kmeans, random_state=42, n_init=10),
+        'GaussianMixture': GaussianMixture(n_components=n_clusters_kmeans, random_state=42),
+        'Birch': Birch(n_clusters=n_clusters_kmeans),
+        'HDBSCAN': HDBSCAN(min_cluster_size=min_cluster, min_samples=min_samp, metric='euclidean'),
+        'Agglomerative': AgglomerativeClustering(n_clusters=n_clusters_kmeans)
     }
-    logger.info(f"HDBSCAN finalizado. Silueta: {hdb_sil:.4f}, Cohesión: {hdb_cohesion:.4f}, Ruido: {noise_count}")
+
+    for name, model in models.items():
+        logger.info(f"Entrenamiento {name} en progreso.")
+        t0 = time.time()
+        try:
+            if n_samples > 1:
+                if name == 'GaussianMixture':
+                    # GMM no tiene fit_predict directo en algunas versiones, usamos fit y predict
+                    model.fit(X)
+                    labels = model.predict(X)
+                else:
+                    labels = model.fit_predict(X)
+                
+                elapsed_time = time.time() - t0
+                cluster_labels[name] = labels
+                
+                # Cálculo de métricas de ruido y número de clústeres reales
+                noise_count = int(np.sum(labels == -1)) if name == 'HDBSCAN' else 0
+                non_noise_mask = labels != -1
+                num_clusters = len([c for c in np.unique(labels) if c != -1])
+                
+                if num_clusters >= 2 and np.sum(non_noise_mask) > num_clusters:
+                    sil = float(silhouette_score(X[non_noise_mask], labels[non_noise_mask], metric='euclidean'))
+                    cohesion = calculate_cohesion(X, labels)
+                else:
+                    sil = np.nan
+                    cohesion = np.nan
+            else:
+                labels = np.zeros(n_samples, dtype=int)
+                elapsed_time = time.time() - t0
+                cluster_labels[name] = labels
+                sil = np.nan
+                cohesion = np.nan
+                noise_count = 0
+                num_clusters = 1
+
+            results[name] = {
+                'Silhouette': sil,
+                'Cohesion': cohesion,
+                'Time_Secs': elapsed_time,
+                'Noise_Count': noise_count,
+                'Num_Clusters': num_clusters
+            }
+            logger.info(f"{name} finalizado. Silueta: {sil:.4f}, Cohesión: {cohesion:.4f}")
+        except Exception as e:
+            logger.error(f"Error entrenando {name}: {e}")
+            results[name] = {
+                'Silhouette': np.nan,
+                'Cohesion': np.nan,
+                'Time_Secs': time.time() - t0,
+                'Noise_Count': 0,
+                'Num_Clusters': 0
+            }
+            cluster_labels[name] = np.zeros(n_samples, dtype=int)
 
     return results, cluster_labels
 
@@ -300,37 +309,8 @@ def execute_clustering_pipeline() -> pd.DataFrame:
         tsne = TSNE(n_components=2, random_state=42, max_iter=300, perplexity=perp, n_jobs=-1)
         X_tsne = tsne.fit_transform(X)
         
-        # Se calculan las métricas de monitoreo sobre el lote actual
-        km_sil = float(silhouette_score(X, kmeans_labels, metric='euclidean')) if len(np.unique(kmeans_labels)) > 1 else np.nan
-        km_cohesion = calculate_cohesion(X, kmeans_labels)
-        
-        non_noise_mask = hdbscan_labels != -1
-        num_clusters_hdb = len([c for c in np.unique(hdbscan_labels) if c != -1])
-        noise_count = int(np.sum(hdbscan_labels == -1))
-        
-        if num_clusters_hdb >= 2 and np.sum(non_noise_mask) > num_clusters_hdb:
-            hdb_sil = float(silhouette_score(X[non_noise_mask], hdbscan_labels[non_noise_mask], metric='euclidean'))
-            hdb_cohesion = calculate_cohesion(X, hdbscan_labels)
-        else:
-            hdb_sil = np.nan
-            hdb_cohesion = np.nan
-            
-        metrics = {
-            'K-Means': {
-                'Silhouette': km_sil,
-                'Cohesion': km_cohesion,
-                'Time_Secs': 0.0,
-                'Noise_Count': 0,
-                'Num_Clusters': len(np.unique(kmeans_labels))
-            },
-            'HDBSCAN': {
-                'Silhouette': hdb_sil,
-                'Cohesion': hdb_cohesion,
-                'Time_Secs': 0.0,
-                'Noise_Count': noise_count,
-                'Num_Clusters': num_clusters_hdb
-            }
-        }
+        # Se calculan las métricas de monitoreo/benchmarking sobre el lote actual (6 modelos)
+        metrics, _ = run_clustering_benchmarking(X)
 
     # Se guardan las etiquetas asignadas en el DataFrame
     df_entities['kmeans_cluster'] = kmeans_labels

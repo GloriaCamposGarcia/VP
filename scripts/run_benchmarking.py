@@ -1,4 +1,5 @@
 import sys
+import time
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -8,7 +9,149 @@ from datetime import datetime
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
 
-from src.config import logger, RUN_DIR, RUN_DATE, PROJECT_ROOT
+from src.config import logger, RUN_DIR, RUN_DATE, PROJECT_ROOT, SHARED_DIR
+
+def plot_clustering_comparison(df_cluster: pd.DataFrame, output_path: Path):
+    """
+    Se genera y guarda el gráfico comparativo de barras para los modelos de clustering.
+    """
+    try:
+        import matplotlib
+        try:
+            import matplotlib.pyplot as plt
+        except Exception:
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+        
+        df = df_cluster.copy().fillna(0)
+        if df.empty:
+            return
+            
+        model_names = df['Algoritmo'].tolist()
+        silhouette_scores = df['Silhouette_Score'].tolist()
+        cohesion_scores = df['Cohesion'].tolist()
+        
+        x = np.arange(len(model_names))
+        width = 0.35
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        fig.patch.set_facecolor('#1E1E1E')
+        ax.set_facecolor('#1E1E1E')
+        
+        ax.bar(x - width/2, silhouette_scores, width, label='Silhouette Score', color='#2ECC71')
+        ax.bar(x + width/2, cohesion_scores, width, label='Cohesión (Dist. Media)', color='#3498DB')
+        
+        ax.set_ylabel('Valor de Métrica', color='#FFFFFF')
+        ax.set_title('Comparativa de Modelos de Clustering Semántico', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
+        ax.set_xticks(x)
+        ax.set_xticklabels(model_names, rotation=15, ha='right', color='#FFFFFF', fontsize=8)
+        ax.tick_params(colors='#FFFFFF')
+        ax.spines['bottom'].set_color('#555555')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('#555555')
+        ax.legend(facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8)
+        plt.tight_layout()
+        
+        plt.savefig(output_path, dpi=120, facecolor='#1E1E1E')
+        
+        try:
+            plt.show()
+        except Exception:
+            pass
+            
+        plt.close()
+        logger.info(f"Gráfico de clustering guardado en: {output_path}")
+    except Exception as e:
+        logger.warning(f"No se pudo generar el gráfico de clustering: {e}")
+
+def plot_anomaly_comparison(df_anom: pd.DataFrame, output_path: Path):
+    """
+    Se genera y guarda el gráfico comparativo de barras para los modelos de detección de anomalías.
+    """
+    try:
+        import matplotlib
+        try:
+            import matplotlib.pyplot as plt
+        except Exception:
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+        
+        df = df_anom.copy().fillna(0)
+        if df.empty:
+            return
+            
+        model_names = df['Algoritmo'].tolist()
+        
+        fig, ax = plt.subplots(figsize=(11, 5))
+        fig.patch.set_facecolor('#1E1E1E')
+        ax.set_facecolor('#1E1E1E')
+        
+        if 'PR-AUC' in df.columns and 'F1-Score' in df.columns and 'ROC-AUC' in df.columns:
+            # Caso con etiquetas: Graficación de desempeño supervisado
+            pr_aucs = df['PR-AUC'].tolist()
+            f1_scores = df['F1-Score'].tolist()
+            roc_aucs = df['ROC-AUC'].tolist()
+            
+            x = np.arange(len(model_names))
+            width = 0.25
+            
+            ax.bar(x - width, pr_aucs, width, label='PR-AUC', color='#E74C3C')
+            ax.bar(x, f1_scores, width, label='F1-Score', color='#E67E22')
+            ax.bar(x + width, roc_aucs, width, label='ROC-AUC', color='#3498DB')
+            
+            ax.set_ylabel('Valor de Métrica', color='#FFFFFF')
+            ax.set_title('Comparativa de Desempeño de Detección de Anomalías (Supervisada)', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
+            ax.set_xticks(x)
+            ax.set_xticklabels(model_names, rotation=15, ha='right', color='#FFFFFF', fontsize=8)
+            ax.legend(facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8)
+        elif 'Silhouette_Score' in df.columns and 'Distancia_Media_Outliers' in df.columns:
+            # Caso no supervisado con métricas de separabilidad: Silhouette y Distancia Media
+            sil_scores = df['Silhouette_Score'].tolist()
+            dists = df['Distancia_Media_Outliers'].tolist()
+            
+            x = np.arange(len(model_names))
+            width = 0.35
+            
+            ax.bar(x - width/2, sil_scores, width, label='Silhouette Score (Separabilidad)', color='#2ECC71')
+            ax.bar(x + width/2, dists, width, label='Distancia Media Outliers', color='#3498DB')
+            
+            ax.set_ylabel('Valor de Métrica', color='#FFFFFF')
+            ax.set_title('Comparativa de Modelos de Anomalías (Separabilidad y Distancia)', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
+            ax.set_xticks(x)
+            ax.set_xticklabels(model_names, rotation=15, ha='right', color='#FFFFFF', fontsize=8)
+            ax.legend(facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8)
+        else:
+            # Caso no supervisado básico: volumen de anomalías
+            anomalies_detected = df['Num_Anomalias_Detectadas'].tolist()
+            x = np.arange(len(model_names))
+            width = 0.5
+            
+            ax.bar(x, anomalies_detected, width, label='Anomalías Detectadas', color='#E74C3C')
+            ax.set_ylabel('Cantidad de Anomalías', color='#FFFFFF')
+            ax.set_title('Comparativa de Modelos de Detección de Anomalías (Volumen)', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
+            ax.set_xticks(x)
+            ax.set_xticklabels(model_names, rotation=15, ha='right', color='#FFFFFF', fontsize=8)
+            ax.legend(facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8)
+            
+        ax.tick_params(colors='#FFFFFF')
+        ax.spines['bottom'].set_color('#555555')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('#555555')
+        plt.tight_layout()
+        
+        plt.savefig(output_path, dpi=120, facecolor='#1E1E1E')
+        
+        try:
+            plt.show()
+        except Exception:
+            pass
+            
+        plt.close()
+        logger.info(f"Gráfico de anomalías guardado en: {output_path}")
+    except Exception as e:
+        logger.warning(f"No se pudo generar el gráfico de anomalías: {e}")
 
 def to_markdown_table(df: pd.DataFrame) -> str:
     """
@@ -73,6 +216,12 @@ def run_benchmarking_reporting():
     df_chains = pd.read_csv(chains_path) if chains_path.exists() else None
     df_loops = pd.read_csv(loops_path) if loops_path.exists() else None
     
+    # Se generan los gráficos comparativos no supervisados
+    if df_cluster is not None:
+        plot_clustering_comparison(df_cluster, RUN_DIR / 'clustering_model_comparison.png')
+    if df_anom is not None:
+        plot_anomaly_comparison(df_anom, RUN_DIR / 'anomaly_model_comparison.png')
+        
     report_content = f"""# REPORTE DE DESCUBRIMIENTO DE PATRONES Y VÍNCULOS AML OCULTOS
 Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Enfoque: Análisis No Supervisado Puro (Sin Clasificación ni Puntuación de Riesgo CNBV)
@@ -88,6 +237,7 @@ Propósito: Evaluar sentence-transformers locales contra representaciones agrega
     if df_cluster is not None:
         report_content += "\n### Tabla Comparativa de Calidad de Clústeres (Representación Semántica)\n"
         report_content += to_markdown_table(df_cluster)
+        report_content += "\n\n![Comparativa de Modelos de Clustering](clustering_model_comparison.png)\n"
         report_content += "\n\n*Nota: HDBSCAN muestra un Silhouette superior y separa el ruido de forma efectiva, mientras que K-Means ofrece una segmentación completa y constante sin descartar datos.*\n"
     else:
         report_content += "\n[Métricas de Clustering no disponibles. Ejecute embeddings_clustering.py]\n"
@@ -102,7 +252,12 @@ Propósito: Identificar perfiles de comportamiento inusuales y outliers textuale
     if df_anom is not None:
         report_content += "\n### Tabla de Anomalías Cuantitativas Detectadas\n"
         report_content += to_markdown_table(df_anom)
-        report_content += "\n\n*Nota: Los modelos identifican un porcentaje fijo (5%) de entidades con desviaciones de comportamiento operacional en variables OSINT. Adicionalmente, el módulo de embeddings inyecta el flag de outlier de información en cada entidad.*\n"
+        if 'PR-AUC' in df_anom.columns:
+            report_content += "\n\n*Nota: Se evalúa cuantitativamente el desempeño de cada detector de anomalías comparando sus salidas con las etiquetas del analista (`is_suspicious_analyst`). El gráfico de barras agrupadas presenta las métricas de PR-AUC, F1-Score y ROC-AUC para contrastar la efectividad de cada enfoque.*\n"
+        elif 'Silhouette_Score' in df_anom.columns and 'Distancia_Media_Outliers' in df_anom.columns:
+            report_content += "\n\n*Nota: Al no contar con etiquetas, se evalúan la Silhouette Score (indica qué tan bien separadas e aisladas quedan las anomalías del resto del grupo) y la Distancia Media (mide qué tan lejos están las anomalías del centroide normal). Valores más altos en ambas métricas indican que el modelo aísla de forma más clara las desviaciones extremas de comportamiento.*\n"
+        else:
+            report_content += "\n\n*Nota: Los modelos identifican un porcentaje fijo (5%) de entidades con desviaciones de comportamiento operacional en variables OSINT. El gráfico comparativo muestra el volumen total de anomalías identificadas por cada detector sobre el lote de datos analizado.*\n"
     else:
         report_content += "\n[Métricas de Anomalías no disponibles. Ejecute anomaly_detection.py]\n"
 
@@ -110,15 +265,20 @@ Propósito: Identificar perfiles de comportamiento inusuales y outliers textuale
 ---
 
 ## 2.5 MÓDULO 2.5: Aprendizaje Supervisado (Human-in-the-loop)
-Propósito: Entrenar un clasificador adaptativo (Random Forest) basado en decisiones históricas de analistas de cumplimiento para predecir la probabilidad de sospecha real.
+Propósito: Entrenar y comparar 9 clasificadores basados en decisiones históricas de analistas de cumplimiento para predecir la probabilidad de sospecha real y persistir el mejor modelo.
 """
     supervised_report = ""
     if df_nodes is not None and 'is_suspicious_analyst' in df_nodes.columns:
-        logger.info("Entrenamiento de RandomForest supervisado en progreso.")
+        logger.info("Entrenamiento y evaluación de los 9 modelos supervisados en progreso.")
         try:
-            from sklearn.ensemble import RandomForestClassifier
+            from sklearn.dummy import DummyClassifier
+            from sklearn.linear_model import LogisticRegression
+            from sklearn.tree import DecisionTreeClassifier
+            from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier, VotingClassifier
+            from sklearn.svm import SVC
+            from sklearn.neighbors import KNeighborsClassifier
             from sklearn.model_selection import train_test_split
-            from sklearn.metrics import f1_score, recall_score
+            from sklearn.metrics import f1_score, precision_recall_curve, auc, roc_auc_score
             import joblib
             
             # Se preparan las variables explicativas y el vector objetivo
@@ -131,25 +291,134 @@ Propósito: Entrenar un clasificador adaptativo (Random Forest) basado en decisi
             if len(np.unique(y)) > 1:
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
                 
-                clf = RandomForestClassifier(n_estimators=100, random_state=42)
-                clf.fit(X_train, y_train)
+                # Definición de los 9 clasificadores a evaluar
+                models = {
+                    'baseline_0_dummy': DummyClassifier(strategy='stratified', random_state=42),
+                    'baseline_1_logreg': LogisticRegression(max_iter=1000, random_state=42),
+                    'baseline_2_tree': DecisionTreeClassifier(max_depth=5, random_state=42),
+                    'baseline_3_rf': RandomForestClassifier(n_estimators=100, random_state=42),
+                    'baseline_4_gb': GradientBoostingClassifier(n_estimators=100, random_state=42),
+                    'baseline_5_svm': SVC(probability=True, random_state=42),
+                    'baseline_6_knn': KNeighborsClassifier(n_neighbors=5),
+                    'ensemble_stacking': StackingClassifier(
+                        estimators=[
+                            ('rf', RandomForestClassifier(random_state=42)),
+                            ('gb', GradientBoostingClassifier(random_state=42))
+                        ],
+                        final_estimator=LogisticRegression()
+                    ),
+                    'ensemble_voting': VotingClassifier(
+                        estimators=[
+                            ('rf', RandomForestClassifier(random_state=42)),
+                            ('gb', GradientBoostingClassifier(random_state=42)),
+                            ('lr', LogisticRegression(random_state=42))
+                        ],
+                        voting='soft'
+                    )
+                }
                 
-                y_pred = clf.predict(X_test)
-                f1 = f1_score(y_test, y_pred, zero_division=0)
-                rec = recall_score(y_test, y_pred, zero_division=0)
+                comparison_data = []
+                trained_instances = {}
                 
-                # Se realiza la persistencia del modelo ajustado en el registro compartido
-                joblib.dump(clf, RUN_DIR.parent.parent / 'shared' / 'models' / 'supervised_classifier.pkl')
+                for name, clf in models.items():
+                    t0 = time.time()
+                    clf.fit(X_train, y_train)
+                    
+                    y_pred = clf.predict(X_test)
+                    y_prob = clf.predict_proba(X_test)[:, 1]
+                    elapsed_time = time.time() - t0
+                    
+                    f1 = f1_score(y_test, y_pred, zero_division=0)
+                    roc_auc = roc_auc_score(y_test, y_prob)
+                    
+                    precision, recall, _ = precision_recall_curve(y_test, y_prob)
+                    pr_auc = auc(recall, precision)
+                    
+                    comparison_data.append({
+                        'Modelo': name,
+                        'PR-AUC': pr_auc,
+                        'F1-Score': f1,
+                        'ROC-AUC': roc_auc,
+                        'Tiempo_Segs': elapsed_time
+                    })
+                    trained_instances[name] = clf
+                
+                df_comparison = pd.DataFrame(comparison_data)
+                
+                # Se selecciona el mejor modelo según F1-Score
+                best_row = df_comparison.sort_values(by='F1-Score', ascending=False).iloc[0]
+                best_name = best_row['Modelo']
+                best_model = trained_instances[best_name]
+                
+                # Se realiza la persistencia del mejor modelo ajustado
+                joblib.dump(best_model, SHARED_DIR / 'models' / 'supervised_classifier.pkl')
                 
                 supervised_report = f"""
-### Desempeño del Clasificador RandomForest (Evaluación en Test)
-| Métrica | Valor | Objetivo Regulativo |
-| --- | --- | --- |
-| **F1-Score** | {f1:.4f} | >0.82 |
-| **Recall (Sensibilidad)** | {rec:.4f} | Máxima cobertura de lavadores reales |
+### MÓDULO 2.5: Benchmarking de Modelos Supervisados (Human-in-the-loop)
+Se evalúan 9 clasificadores entrenados con etiquetas históricas del analista para determinar el modelo más confiable.
 
-*Nota: Modelo entrenado con etiquetas de analistas obtenidas del CMS. Modelo serializado guardado en `shared/models/supervised_classifier.pkl`.*
+| Modelo | PR-AUC | F1-Score | ROC-AUC | Tiempo (s) |
+| --- | --- | --- | --- | --- |
 """
+                for _, row in df_comparison.iterrows():
+                    supervised_report += f"| {row['Modelo']} | {row['PR-AUC']:.4f} | {row['F1-Score']:.4f} | {row['ROC-AUC']:.4f} | {row['Tiempo_Segs']:.4f} |\n"
+                
+                # Se incrusta el gráfico comparativo en el reporte Markdown
+                supervised_report += "\n\n![Comparativa de Modelos Supervisados](supervised_model_comparison.png)\n"
+                supervised_report += f"\n*Nota: El mejor modelo seleccionado por F1-Score es **{best_name}** y ha sido serializado en `shared/models/supervised_classifier.pkl`.*\n"
+                
+                # Imprimir la tabla en la consola estándar
+                print("\n" + "="*80)
+                print("TABLA COMPARATIVA DE DESEMPEÑO DE MODELOS SUPERVISADOS (CMS)")
+                print(to_markdown_table(df_comparison))
+                print(f"Modelo seleccionado como óptimo: {best_name}")
+                print("="*80 + "\n")
+                
+                # Graficación de barras agrupadas
+                try:
+                    import matplotlib.pyplot as plt
+                    
+                    model_names = df_comparison['Modelo'].tolist()
+                    pr_aucs = df_comparison['PR-AUC'].tolist()
+                    f1_scores = df_comparison['F1-Score'].tolist()
+                    roc_aucs = df_comparison['ROC-AUC'].tolist()
+                    
+                    x = np.arange(len(model_names))
+                    width = 0.25
+                    
+                    fig, ax = plt.subplots(figsize=(11, 5))
+                    fig.patch.set_facecolor('#1E1E1E')
+                    ax.set_facecolor('#1E1E1E')
+                    
+                    rects1 = ax.bar(x - width, pr_aucs, width, label='PR-AUC', color='#E74C3C')
+                    rects2 = ax.bar(x, f1_scores, width, label='F1-Score', color='#E67E22')
+                    rects3 = ax.bar(x + width, roc_aucs, width, label='ROC-AUC', color='#3498DB')
+                    
+                    ax.set_ylabel('Valor de Métrica', color='#FFFFFF')
+                    ax.set_title('Comparativa de Desempeño de Modelos Supervisados', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(model_names, rotation=20, ha='right', color='#FFFFFF', fontsize=8)
+                    ax.tick_params(colors='#FFFFFF')
+                    ax.spines['bottom'].set_color('#555555')
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+                    ax.spines['left'].set_color('#555555')
+                    ax.legend(facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8)
+                    plt.tight_layout()
+                    
+                    # Se guarda el gráfico comparativo en el directorio de la corrida
+                    plot_output_path = RUN_DIR / 'supervised_model_comparison.png'
+                    plt.savefig(plot_output_path, dpi=120, facecolor='#1E1E1E')
+                    logger.info(f"Gráfico de comparación supervisado guardado en: {plot_output_path}")
+                    
+                    try:
+                        plt.show()
+                    except Exception:
+                        pass
+                    plt.close()
+                except Exception as ex_plot:
+                    logger.warning(f"No se pudo desplegar la gráfica comparativa: {ex_plot}")
+                    
             else:
                 supervised_report = "\n[Datos insuficientes para entrenamiento supervisado (solo una clase presente en is_suspicious_analyst)]\n"
         except Exception as e:
@@ -165,7 +434,7 @@ Propósito: Entrenar un clasificador adaptativo (Random Forest) basado en decisi
    - `1`: Confirmado Sospechoso / Reporte de Operación Inusual (ROI) enviado.
    - `0`: Alerta Cerrada / Homónimo / Falso Positivo.
 2. **Ingesta de Datos**: Se debe integrar esta columna bajo el nombre `is_suspicious_analyst` en el archivo de entrada `entity_match_summary.csv` en `data/raw/`.
-3. **Entrenamiento Automatizado**: Al ejecutar los scripts `train_pipeline.py` o `use_pipeline.py`, el pipeline identificará la presencia de la columna, ajustará un modelo `RandomForestClassifier` y lo registrará en `data/processed/shared/models/supervised_classifier.pkl` para su posterior uso predictivo.
+3. **Entrenamiento Automatizado**: Al ejecutar los scripts `train_pipeline.py` o `use_pipeline.py`, el pipeline identificará la presencia de la columna, ajustará los modelos y registrará el mejor en `data/processed/shared/models/supervised_classifier.pkl` para su posterior uso predictivo.
 """
     report_content += supervised_report
 

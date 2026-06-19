@@ -209,16 +209,16 @@ def consolidate_entity_features(
 
     # 4. Se verifica y carga la decisión real del analista si está disponible (MLOps Best Practice)
     if df_match_summary is not None and 'is_suspicious_analyst' in df_match_summary.columns:
-        logger.info("Carga de etiquetas del analista (is_suspicious_analyst).")
+        logger.info("Carga de etiquetas del analista (is_suspicious_analyst) desde la data cruda.")
         df_label = df_match_summary[['entity_id', 'is_suspicious_analyst']].copy()
         df = df.merge(df_label, on='entity_id', how='left')
         df['is_suspicious_analyst'] = df['is_suspicious_analyst'].fillna(0).astype(int)
-        logger.info("Consolidación finalizada.")
-        logger.info(f"Distribución de etiqueta del analista:\n"
-                    f"{df['is_suspicious_analyst'].value_counts(normalize=True).round(4)}")
     else:
         logger.warning("Sin etiquetas reales del analista. Flujo configurado en modo no supervisado.")
-        logger.info("Consolidación finalizada.")
+    logger.info("Consolidación finalizada.")
+    if 'is_suspicious_analyst' in df.columns:
+        logger.info(f"Distribución de etiqueta del analista:\n"
+                    f"{df['is_suspicious_analyst'].value_counts(normalize=True).round(4)}")
         
     return df
 
