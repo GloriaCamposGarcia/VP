@@ -10,12 +10,12 @@ from src.embeddings_clustering import calculate_cohesion
 class TestAMLPipeline(unittest.TestCase):
     """
     Se definen las pruebas unitarias para validar la integridad de la lógica de negocio
-    y el procesamiento de datos del sistema de cumplimiento PLD/AML.
+    y el procesamiento de datos del sistema de cumplimiento AML.
     """
 
     def setUp(self):
         """
-        Se realiza la preparación de los datos mínimos de prueba para la ejecución de las aserciones.
+        Preparación de los datos mínimos de prueba para la ejecución de las aserciones.
         """
         self.df_sources_mock = pd.DataFrame([
             {

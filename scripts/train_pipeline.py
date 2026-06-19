@@ -2,11 +2,11 @@ import os
 import sys
 from pathlib import Path
 
-# Se añade la raíz del proyecto al path de búsqueda de módulos
+# Raíz del proyecto agregada al path de búsqueda de módulos
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
 
-# Se establece el modo de entrenamiento en las variables de entorno antes de importar módulos
+# Modo de entrenamiento agregado a las variables de entorno
 os.environ["PIPELINE_MODE"] = "train"
 
 from src.config import logger
@@ -23,30 +23,30 @@ def run_train_pipeline():
     agrupamiento semántico, detección de anomalías y generación de reportes y visualizaciones.
     """
     logger.info("==================================================")
-    logger.info("INICIO DE PIPELINE DE ENTRENAMIENTO PLD/AML (MLOps)")
+    logger.info("INICIO DE PIPELINE DE ENTRENAMIENTO AML")
     logger.info("==================================================")
     
-    # 1. Se ejecuta el procesamiento de datos crudos
+    # 1. Procesamiento de la raw data
     logger.info("Paso 1: Procesamiento de datos y catalogación en progreso.")
     prepare_pipeline()
     
-    # 2. Se realiza el escalado de características con PySpark
+    # 2. Escalado de características con PySpark
     logger.info("Paso 2: Escalado PySpark en progreso.")
     execute_pyspark_pipeline()
     
-    # 3. Se entrena el modelo de clustering semántico y embeddings
+    # 3. Entrenamiento del modelo de clustering semántico y embeddings
     logger.info("Paso 3: Ajuste de clustering semántico en progreso.")
     execute_clustering_pipeline()
     
-    # 4. Se entrenan los modelos de detección de anomalías
+    # 4. Entrenamiento de los modelos de detección de anomalías
     logger.info("Paso 4: Ajuste de modelos de anomalías en progreso.")
     execute_anomaly_pipeline()
     
-    # 5. Se realiza el análisis de grafos y propagación GNN
+    # 5. Análisis de grafos y propagación GNN
     logger.info("Paso 5: Análisis de grafos y propagación GNN en progreso.")
     execute_unsupervised_graph_analysis()
     
-    # 6. Se genera el reporte final de benchmarking y visualizaciones
+    # 6. Generación del reporte final de benchmarking y visualizaciones
     logger.info("Paso 6: Consolidación de reporte y visualizaciones en progreso.")
     run_benchmarking_reporting()
     

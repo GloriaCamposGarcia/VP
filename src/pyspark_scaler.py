@@ -21,7 +21,7 @@ except ImportError:
 class PySparkAMLScaler:
     """
     Se proporciona un pipeline escalable utilizando PySpark para el procesamiento transaccional masivo
-    de entidades y el cálculo de agregaciones OSINT de acuerdo a estándares Fintech.
+    de entidades y el cálculo de agregaciones OSINT.
     """
     def __init__(self):
         self.spark: Optional[SparkSession] = None
@@ -29,7 +29,6 @@ class PySparkAMLScaler:
     def initialize_spark(self) -> bool:
         """
         Se inicializa la sesión local de Spark si PySpark se encuentra instalado y configurado en el sistema.
-        Retorna True en caso de éxito y False en caso contrario.
         """
         if not HAS_PYSPARK:
             logger.warning("PySpark no disponible en el entorno actual.")
@@ -58,18 +57,18 @@ class PySparkAMLScaler:
             
         logger.info("Agregación escalable en Spark en progreso.")
         try:
-            # 1. Se cargan los conjuntos de datos usando Pandas para prevenir errores de delimitación en JSON
+            # 1. Cargar conjuntos de datos usando Pandas para prevenir errores de delimitación en JSON
             logger.info("Carga de conjuntos de datos crudos mediante Pandas.")
             df_sources_pd = pd.read_csv(DATA_RAW_DIR / 'entity_source_results.csv')
             df_evidence_pd = pd.read_csv(DATA_RAW_DIR / 'evidence_items.csv')
             df_match_pd = pd.read_csv(DATA_RAW_DIR / 'entity_match_summary.csv')
             
-            # Se normalizan los tipos de datos para compatibilidad con Spark
+            # Normalización de los tipos de datos para compatibilidad con Spark
             for df_tmp in [df_sources_pd, df_evidence_pd, df_match_pd]:
                 for col in df_tmp.select_dtypes(include=['object']).columns:
                     df_tmp[col] = df_tmp[col].fillna("").astype(str)
                     
-            # Se crean los DataFrames nativos de Spark
+            # DataFrames nativos de Spark
             logger.info("Conversión de DataFrames a Spark en progreso.")
             df_sources = self.spark.createDataFrame(df_sources_pd)
             df_evidence = self.spark.createDataFrame(df_evidence_pd)
@@ -78,7 +77,7 @@ class PySparkAMLScaler:
             logger.info("Esquema de resultados de fuentes:")
             df_sources.printSchema()
             
-            # 2. Se realizan la agrupación y el cálculo de variables en paralelo
+            # 2. Agrupación y cálculo de variables en paralelo
             df_sources_agg = df_sources.withColumn("evidence_count_num", F.col("evidence_count").cast(IntegerType())).groupBy("entity_id").agg(
                 F.count("source_id").alias("sources_evaluated"),
                 F.sum(F.when(F.col("evidence_count_num") > 0, 1).otherwise(0)).alias("sources_with_hallazgo")
@@ -112,18 +111,18 @@ class PySparkAMLScaler:
                 "sources_hit": ""
             })
             
-            # Se asigna la lógica para la decisión general
+            # Lógica para la decisión general
             df_consolidated = df_consolidated.withColumn(
                 "overall_decision",
                 F.when(F.col("review_items") > 0, "needs_review")
                 .otherwise(F.when(F.col("evidence_items") > 0, "accepted").otherwise("no_match"))
             )
             
-            # Se muestra una muestra de los resultados en la salida estándar
+            # Resultados
             logger.info("Muestra de datos consolidados:")
             df_consolidated.show(5)
             
-            # 4. Se persisten los resultados en formato optimizado Parquet
+            # 4. Resultados en formato Parquet
             output_parquet_path = str(RUN_DIR / 'pyspark_entities.parquet')
             logger.info(f"Persistencia en Parquet: {output_parquet_path}")
             df_consolidated.write.mode("overwrite").parquet(output_parquet_path)
@@ -143,7 +142,7 @@ class PySparkAMLScaler:
 
 def execute_pyspark_pipeline() -> bool:
     """
-    Se orquesta la ejecución completa del pipeline escalable en PySpark.
+    Ejecución completa del pipeline escalable en PySpark.
     """
     scaler = PySparkAMLScaler()
     success = False

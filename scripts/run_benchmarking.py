@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
-# Se añade la raíz del proyecto al path
+# Raíz del proyecto
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
 
@@ -13,7 +13,7 @@ from src.config import logger, RUN_DIR, RUN_DATE, PROJECT_ROOT, SHARED_DIR
 
 def plot_clustering_comparison(df_cluster: pd.DataFrame, output_path: Path):
     """
-    Se genera y guarda el gráfico comparativo de barras para los modelos de clustering.
+    Gráfico comparativo de barras para los modelos de clustering.
     """
     try:
         import matplotlib
@@ -88,7 +88,7 @@ def plot_anomaly_comparison(df_anom: pd.DataFrame, output_path: Path):
         ax.set_facecolor('#1E1E1E')
         
         if 'PR-AUC' in df.columns and 'F1-Score' in df.columns and 'ROC-AUC' in df.columns:
-            # Caso con etiquetas: Graficación de desempeño supervisado
+            # Caso con etiquetas: Grafico de desempeño del modelo supervisado
             pr_aucs = df['PR-AUC'].tolist()
             f1_scores = df['F1-Score'].tolist()
             roc_aucs = df['ROC-AUC'].tolist()
@@ -101,12 +101,12 @@ def plot_anomaly_comparison(df_anom: pd.DataFrame, output_path: Path):
             ax.bar(x + width, roc_aucs, width, label='ROC-AUC', color='#3498DB')
             
             ax.set_ylabel('Valor de Métrica', color='#FFFFFF')
-            ax.set_title('Comparativa de Desempeño de Detección de Anomalías (Supervisada)', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
+            ax.set_title('Desempeño de Detección de Anomalías (Supervisada)', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
             ax.set_xticks(x)
             ax.set_xticklabels(model_names, rotation=15, ha='right', color='#FFFFFF', fontsize=8)
             ax.legend(facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8)
         elif 'Silhouette_Score' in df.columns and 'Distancia_Media_Outliers' in df.columns:
-            # Caso no supervisado con métricas de separabilidad: Silhouette y Distancia Media
+            # Modelo no supervisado con métricas de separabilidad: Silhouette y Distancia Media
             sil_scores = df['Silhouette_Score'].tolist()
             dists = df['Distancia_Media_Outliers'].tolist()
             
@@ -117,12 +117,12 @@ def plot_anomaly_comparison(df_anom: pd.DataFrame, output_path: Path):
             ax.bar(x + width/2, dists, width, label='Distancia Media Outliers', color='#3498DB')
             
             ax.set_ylabel('Valor de Métrica', color='#FFFFFF')
-            ax.set_title('Comparativa de Modelos de Anomalías (Separabilidad y Distancia)', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
+            ax.set_title('Desempeño de Modelos de Anomalías (Separabilidad y Distancia)', color='#FFFFFF', fontsize=11, fontweight='bold', pad=12)
             ax.set_xticks(x)
             ax.set_xticklabels(model_names, rotation=15, ha='right', color='#FFFFFF', fontsize=8)
             ax.legend(facecolor='#2D2D2D', edgecolor='none', labelcolor='#FFFFFF', fontsize=8)
         else:
-            # Caso no supervisado básico: volumen de anomalías
+            # Modelo no supervisado básico: volumen de anomalías
             anomalies_detected = df['Num_Anomalias_Detectadas'].tolist()
             x = np.arange(len(model_names))
             width = 0.5
@@ -155,7 +155,7 @@ def plot_anomaly_comparison(df_anom: pd.DataFrame, output_path: Path):
 
 def to_markdown_table(df: pd.DataFrame) -> str:
     """
-    Se convierte un DataFrame de Pandas a formato de tabla de Markdown.
+    PD DataFrame a formato de tabla de Markdown.
     """
     headers = df.columns.tolist()
     header_row = "| " + " | ".join(headers) + " |"
@@ -180,14 +180,14 @@ def run_benchmarking_reporting():
     """
     run_dir_rel = RUN_DIR.relative_to(PROJECT_ROOT)
     
-    # Se intenta generar las visualizaciones individuales por Entity ID
+    # Visualizaciones individuales por Entity ID
     try:
         from src.visualization import generate_all_entity_graphs
         generate_all_entity_graphs()
     except Exception as e:
         logger.error(f"Error al generar las visualizaciones de red por entidad: {e}")
 
-    # Se intenta ejecutar el análisis relacional de cadenas
+    # Analisis relacional de cadenas
     try:
         from src.chain_analysis import run_chain_analysis
         run_chain_analysis()
@@ -196,7 +196,7 @@ def run_benchmarking_reporting():
 
     logger.info("Consolidación de métricas en progreso.")
     
-    # Se definen las rutas de los archivos de métricas
+    # Rutas de los archivos de métricas
     clustering_path = RUN_DIR / 'clustering_metrics.csv'
     anomaly_path = RUN_DIR / 'anomaly_metrics.csv'
     nodes_path = RUN_DIR / 'graph_enriched_entities.csv'
@@ -216,21 +216,21 @@ def run_benchmarking_reporting():
     df_chains = pd.read_csv(chains_path) if chains_path.exists() else None
     df_loops = pd.read_csv(loops_path) if loops_path.exists() else None
     
-    # Se generan los gráficos comparativos no supervisados
+    # Gráficos comparativos no supervisados
     if df_cluster is not None:
         plot_clustering_comparison(df_cluster, RUN_DIR / 'clustering_model_comparison.png')
     if df_anom is not None:
         plot_anomaly_comparison(df_anom, RUN_DIR / 'anomaly_model_comparison.png')
         
-    report_content = f"""# REPORTE DE DESCUBRIMIENTO DE PATRONES Y VÍNCULOS AML OCULTOS
+    report_content = f"""# REPORTE DE DESCUBRIMIENTO DE PATRONES Y VÍNCULOS OCULTOS
 Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Enfoque: Análisis No Supervisado Puro (Sin Clasificación ni Puntuación de Riesgo CNBV)
+Enfoque: Análisis No Supervisado
 
-Este reporte detalla las estructuras latentes, los vínculos ocultos identificados entre entidades mediante similitud semántica y las anomalías de información detectadas cuantitativamente.
+Este reporte detalla las estructuras ecnontradas, los vínculos ocultos identificados entre entidades mediante similitud semántica y las anomalías de información detectadas.
 
 ---
 
-## 1. MÓDULO 1: Agrupamiento Semántico de Perfiles de Entidades
+## 1. Agrupamiento Semántico de Perfiles de Entidades
 Propósito: Evaluar sentence-transformers locales contra representaciones agregadas de perfiles de entidad.
 """
 
@@ -245,27 +245,27 @@ Propósito: Evaluar sentence-transformers locales contra representaciones agrega
     report_content += """
 ---
 
-## 2. MÓDULO 2: Detección No Supervisada de Anomalías de Comportamiento e Información
+## 2. Detección No Supervisada de Anomalías de Comportamiento e Información
 Propósito: Identificar perfiles de comportamiento inusuales y outliers textuales o numéricos sin etiquetas de validación.
 """
 
     if df_anom is not None:
-        report_content += "\n### Tabla de Anomalías Cuantitativas Detectadas\n"
+        report_content += "\n### Tabla de Anomalías Detectadas\n"
         report_content += to_markdown_table(df_anom)
         if 'PR-AUC' in df_anom.columns:
             report_content += "\n\n*Nota: Se evalúa cuantitativamente el desempeño de cada detector de anomalías comparando sus salidas con las etiquetas del analista (`is_suspicious_analyst`). El gráfico de barras agrupadas presenta las métricas de PR-AUC, F1-Score y ROC-AUC para contrastar la efectividad de cada enfoque.*\n"
         elif 'Silhouette_Score' in df_anom.columns and 'Distancia_Media_Outliers' in df_anom.columns:
-            report_content += "\n\n*Nota: Al no contar con etiquetas, se evalúan la Silhouette Score (indica qué tan bien separadas e aisladas quedan las anomalías del resto del grupo) y la Distancia Media (mide qué tan lejos están las anomalías del centroide normal). Valores más altos en ambas métricas indican que el modelo aísla de forma más clara las desviaciones extremas de comportamiento.*\n"
+            report_content += "\n\n*Nota: Al no contar con etiquetas, se evalúan la Silhouette Score (indica qué tan bien separadas e aisladas quedan las anomalías del resto del grupo) y la Distancia Media (mide qué tan lejos están las anomalías del centroide normal). Por lo que, valores más altos en ambas métricas indican que el modelo aísla de forma más clara las desviaciones extremas de comportamiento.*\n"
         else:
-            report_content += "\n\n*Nota: Los modelos identifican un porcentaje fijo (5%) de entidades con desviaciones de comportamiento operacional en variables OSINT. El gráfico comparativo muestra el volumen total de anomalías identificadas por cada detector sobre el lote de datos analizado.*\n"
+            report_content += "\n\n*Nota: Los modelos identifican un porcentaje fijo (5%) de entidades con desviaciones de comportamiento operacional en variables OSINT. Por lo tanto, el gráfico comparativo muestra el volumen total de anomalías identificadas por cada modelo de clasificación sobre el lote de datos analizados.*\n"
     else:
         report_content += "\n[Métricas de Anomalías no disponibles. Ejecute anomaly_detection.py]\n"
 
     report_content += """
 ---
 
-## 2.5 MÓDULO 2.5: Aprendizaje Supervisado (Human-in-the-loop)
-Propósito: Entrenar y comparar 9 clasificadores basados en decisiones históricas de analistas de cumplimiento para predecir la probabilidad de sospecha real y persistir el mejor modelo.
+## 3. Aprendizaje Supervisado (Human-in-the-loop)
+Propósito: Entrenar y comparar 9 clasificadores basados en decisiones históricas de analistas de cumplimiento para predecir la probabilidad de sospecha real.
 """
     supervised_report = ""
     if df_nodes is not None and 'is_suspicious_analyst' in df_nodes.columns:
@@ -281,7 +281,7 @@ Propósito: Entrenar y comparar 9 clasificadores basados en decisiones históric
             from sklearn.metrics import f1_score, precision_recall_curve, auc, roc_auc_score
             import joblib
             
-            # Se preparan las variables explicativas y el vector objetivo
+            # Preparación de las variables explicativas y el vector objetivo
             features = ['evidence_items', 'max_identity_score', 'sources_with_hallazgo']
             features = [f for f in features if f in df_nodes.columns]
             
@@ -354,27 +354,27 @@ Propósito: Entrenar y comparar 9 clasificadores basados en decisiones históric
                 joblib.dump(best_model, SHARED_DIR / 'models' / 'supervised_classifier.pkl')
                 
                 supervised_report = f"""
-### MÓDULO 2.5: Benchmarking de Modelos Supervisados (Human-in-the-loop)
+### 4. Benchmarking de Modelos Supervisados (Human-in-the-loop)
 Se evalúan 9 clasificadores entrenados con etiquetas históricas del analista para determinar el modelo más confiable.
 
 | Modelo | PR-AUC | F1-Score | ROC-AUC | Tiempo (s) |
 | --- | --- | --- | --- | --- |
 """
                 for _, row in df_comparison.iterrows():
-                    supervised_report += f"| {row['Modelo']} | {row['PR-AUC']:.4f} | {row['F1-Score']:.4f} | {row['ROC-AUC']:.4f} | {row['Tiempo_Segs']:.4f} |\n"
+                    supervised_report += f"| {row['Modelo']} | {row['PR-AUC']:.4f} | {row['F1-Score']:.4f} | {row['ROC-AUC']:.4f} | {row['Tiempo(s))']:.4f} |\n"
                 
-                # Se incrusta el gráfico comparativo en el reporte Markdown
+                # Agregación del gráfico comparativo en el reporte Markdown
                 supervised_report += "\n\n![Comparativa de Modelos Supervisados](supervised_model_comparison.png)\n"
                 supervised_report += f"\n*Nota: El mejor modelo seleccionado por F1-Score es **{best_name}** y ha sido serializado en `shared/models/supervised_classifier.pkl`.*\n"
                 
-                # Imprimir la tabla en la consola estándar
+                # Tabla comparactiva
                 print("\n" + "="*80)
-                print("TABLA COMPARATIVA DE DESEMPEÑO DE MODELOS SUPERVISADOS (CMS)")
+                print("TABLA COMPARATIVA DE DESEMPEÑO DE MODELOS SUPERVISADOS ")
                 print(to_markdown_table(df_comparison))
                 print(f"Modelo seleccionado como óptimo: {best_name}")
                 print("="*80 + "\n")
                 
-                # Graficación de barras agrupadas
+                # Graficas de barras
                 try:
                     import matplotlib.pyplot as plt
                     
@@ -422,26 +422,26 @@ Se evalúan 9 clasificadores entrenados con etiquetas históricas del analista p
             else:
                 supervised_report = "\n[Datos insuficientes para entrenamiento supervisado (solo una clase presente en is_suspicious_analyst)]\n"
         except Exception as e:
-            logger.error(f"Error entrenando clasificador supervisado: {e}")
-            supervised_report = f"\n[Error entrenando clasificador supervisado: {e}]\n"
+            logger.error(f"Error entrenando el clasificador supervisado: {e}")
+            supervised_report = f"\n[Error entrenando elclasificador supervisado: {e}]\n"
     else:
         supervised_report = """
 ### Estado del Modelo Supervisado: **DESACTIVADO**
-*No se encontraron etiquetas de decisiones del analista ('is_suspicious_analyst') en los datos de entrada crudos.*
+*No se encontraron etiquetas de decisiones del analista ('is_suspicious_analyst') en los datos de entrada.*
 
 #### Requisitos de Habilitación para el Clasificador Supervisado en Producción:
-1. **Extracción de Decisiones**: Se requiere exportar las resoluciones del analista desde el sistema de gestión de casos (CMS), asignando una etiqueta binaria:
-   - `1`: Confirmado Sospechoso / Reporte de Operación Inusual (ROI) enviado.
+1. **Extracción de Decisiones**: Se requiere exportar las resoluciones del analista, asignando una etiqueta binaria:
+   - `1`: Sospechoso confirmado/ Reporte de Operación Inusual (ROI) enviado.
    - `0`: Alerta Cerrada / Homónimo / Falso Positivo.
 2. **Ingesta de Datos**: Se debe integrar esta columna bajo el nombre `is_suspicious_analyst` en el archivo de entrada `entity_match_summary.csv` en `data/raw/`.
-3. **Entrenamiento Automatizado**: Al ejecutar los scripts `train_pipeline.py` o `use_pipeline.py`, el pipeline identificará la presencia de la columna, ajustará los modelos y registrará el mejor en `data/processed/shared/models/supervised_classifier.pkl` para su posterior uso predictivo.
+3. **Entrenamiento Automatizado**: Al ejecutar los scripts `train_pipeline.py` o `use_pipeline.py`, el pipeline identificará la presencia de la columna, ajustará los modelos y registrará el mejor en `data/processed/shared/models/supervised_classifier.pkl` para su uso posterior.
 """
     report_content += supervised_report
 
     report_content += """
 ---
 
-## 3. MÓDULO 3: Red Topológica y Vínculos Semánticos Ocultos (Análisis de Grafos)
+## 5. Red Topológica y Vínculos Semánticos Ocultos (Análisis de Grafos)
 Propósito: Mapear la conectividad implícita de las entidades y agruparlas en comunidades relacionales.
 """
 
@@ -449,7 +449,7 @@ Propósito: Mapear la conectividad implícita de las entidades y agruparlas en c
         # Se calculan las estadísticas estructurales del grafo
         total_nodes = len(df_nodes)
         
-        # Se filtran los tipos de relación para el análisis descriptivo
+        # Filtrado de los tipos de relación para el análisis descriptivo
         shared_ref = len(df_edges[df_edges['relation_type'] == 'shared_reference'])
         shared_cont = len(df_edges[df_edges['relation_type'] == 'shared_content'])
         sem_sim = len(df_edges[df_edges['relation_type'] == 'semantic_similarity'])
@@ -489,21 +489,21 @@ Propósito: Mapear la conectividad implícita de las entidades y agruparlas en c
     report_content += f"""
 ---
 
-## 4. ANÁLISIS VISUAL DE LA RED Y VÍNCULOS OCULTOS
+## 6. ANÁLISIS VISUAL DE LA RED Y VÍNCULOS OCULTOS
 Se han generado visualizaciones de red individuales (grafo ego de 1 salto) por cada Entity ID con conexiones en el siguiente directorio:
 
 - **Directorio de Gráficos de Entidades**: [{run_dir_rel.as_posix()}/entity_graphs/](file:///{str((RUN_DIR / 'entity_graphs').as_posix())}/)
 
-Cada imagen dispone de forma concéntrica a los vecinos alrededor de la entidad consultada (nodo dorado central), permitiendo identificar claramente:
+Cada imagen dispone de forma concéntrica a los vecinos alrededor de la entidad consultada (nodo amarillo central), permitiendo identificar claramente:
 - **Líneas grises continuas**: Conexiones físicas conocidas (URLs o hashes de contenido compartidos).
 - **Líneas rojas discontinuas**: Vínculos de similitud semántica ocultos descubiertos por embeddings.
 """
 
-    # 5. Sección de Análisis de Cadenas
+    # Sección de Análisis de Cadenas
     report_content += f"""
 ---
 
-## 5. DETECCIÓN DE VÍNCULOS EN CADENA (MULTI-HOP) Y BUCLES SOSPECHOSOS
+## 7. DETECCIÓN DE VÍNCULOS EN CADENA (MULTI-HOP) Y BUCLES SOSPECHOSOS
 Propósito: Rastrear caminos de relación indirectos (hasta 3 saltos) desde listas de sanciones hacia entidades ordinarias/anómalas, y detectar ciclos de simulación.
 """
 
@@ -530,7 +530,7 @@ Propósito: Rastrear caminos de relación indirectos (hasta 3 saltos) desde list
     else:
         report_content += "\n[No se detectaron bucles relacionales cerrados en este conjunto de datos]\n"
 
-    # Se escribe el reporte final en el directorio de la corrida
+    # Generación del reporte final en el directorio de la corrida
     report_output_path = RUN_DIR / 'benchmarking_report.md'
     with open(report_output_path, 'w', encoding='utf-8') as f:
         f.write(report_content)

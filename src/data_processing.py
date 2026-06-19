@@ -10,7 +10,7 @@ def load_raw_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Se realiza la carga de los conjuntos de datos correspondientes a los resultados de fuentes,
     evidencias y el resumen de coincidencias desde la ruta de datos de origen (raw).
-    Se contempla el soporte para directorios específicos según el modo de ejecución (train/use).
+    Y se contempla el soporte para directorios específicos según el modo de ejecución (train/use).
     """
     raw_dir = DATA_RAW_DIR / PIPELINE_MODE if (DATA_RAW_DIR / PIPELINE_MODE).exists() else DATA_RAW_DIR
     logger.info(f"Carga de datos crudos desde: {raw_dir}")
@@ -48,7 +48,7 @@ def parse_entity_catalog(
     logger.info("Construcción del catálogo de entidades en progreso.")
     entities: Dict[str, dict] = {}
     
-    # Se construye un mapa dinámico de país a código a partir de df_match_summary
+    # Mapeo dinámico de país a código a partir de df_match_summary
     dynamic_country_mapping = {}
     if df_match_summary is not None and not df_match_summary.empty:
         for _, row in df_match_summary.iterrows():
@@ -69,7 +69,7 @@ def parse_entity_catalog(
         c_clean = str(c_str).strip()
         if not c_clean or c_clean.lower() in ['unknown', '', 'nan']:
             return 'DESCONOCIDO'
-        # Se verifica si está en el mapeo dinámico construido desde la data cruda
+        # Se verifica si está en el mapeo dinámico
         if c_clean.lower() in dynamic_country_mapping:
             return dynamic_country_mapping[c_clean.lower()]
         # Se mantiene si ya es un código de 3 letras
@@ -200,16 +200,16 @@ def consolidate_entity_features(
     df['evidence_items'] = df['evidence_items'].fillna(0).astype(int)
     df['review_items'] = df['review_items'].fillna(0).astype(int)
     
-    # 3. Se define la decisión general
+    # 3. Decisión general
     df['overall_decision'] = np.where(
         df['review_items'] > 0,
         'needs_review',
         np.where(df['evidence_items'] > 0, 'accepted', 'no_match')
     )
 
-    # 4. Se verifica y carga la decisión real del analista si está disponible (MLOps Best Practice)
+    # 4. Se verifica y carga la decisión real del analista (si está disponible)
     if df_match_summary is not None and 'is_suspicious_analyst' in df_match_summary.columns:
-        logger.info("Carga de etiquetas del analista (is_suspicious_analyst) desde la data cruda.")
+        logger.info("Carga de etiquetas del analista (is_suspicious_analyst) desde la data.")
         df_label = df_match_summary[['entity_id', 'is_suspicious_analyst']].copy()
         df = df.merge(df_label, on='entity_id', how='left')
         df['is_suspicious_analyst'] = df['is_suspicious_analyst'].fillna(0).astype(int)
@@ -227,9 +227,7 @@ def build_relational_graph_data(
     df_evidence: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Se construyen las relaciones implícitas de identidad y de índole financiera entre las entidades.
-    Se establece un enlace entre entidades cuando comparten referencias URL, hashes de contenido
-    o identificadores comunes dentro del conjunto de evidencias recolectadas.
+    Se construyen las relaciones implícitas de identidad entre las entidades, asi como la relación por enlaces (fuentes) entre entidades.
     """
     logger.info("Construcción de relaciones implícitas en progreso.")
     edges = []

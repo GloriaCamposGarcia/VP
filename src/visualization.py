@@ -82,7 +82,7 @@ def get_entity_evidence_details(entity_id, df_evidence):
 def plot_single_entity_graph(args):
     """
     Se genera y exporta el minigrafo ego de 1 salto para una entidad específica.
-    Se importan las bibliotecas gráficas internamente para prevenir problemas de concurrencia y serialización en Windows.
+    Se importan las bibliotecas gráficas internamente para prevenir problemas de concurrencia y serialización.
     """
     ent_id, ent_name, connections, output_dir_str, name_map = args
     
@@ -92,7 +92,7 @@ def plot_single_entity_graph(args):
         key=lambda x: (x[1] == 'semantic_similarity', x[2]),
         reverse=True
     )
-    # Se restringe a un máximo de 30 conexiones por legibilidad
+    # Se restringe a un máximo de 30 conexiones por temas de legibilidad
     max_conn = 30
     if len(connections) > max_conn:
         connections = connections[:max_conn]
@@ -127,7 +127,7 @@ def plot_single_entity_graph(args):
             pass
             
     G = nx.Graph()
-    # Se agrega el nodo central en color dorado
+    # Se agrega el nodo central en color amarillo
     G.add_node(ent_id, name=ent_name, is_center=True)
     
     for neighbor_id, rel, w, is_source in connections:
@@ -144,16 +144,16 @@ def plot_single_entity_graph(args):
         angle = 2.0 * np.pi * idx / n_neigh
         pos[neigh] = np.array([np.cos(angle) * 2.0, np.sin(angle) * 2.0])
         
-    # Se genera el lienzo de la figura con fondo oscuro y mayor tamaño para acomodar las etiquetas detalladas
+    # Espacio de la imagen
     fig = plt.figure(figsize=(9.5, 9.5), facecolor='#1E1E1E')
     ax = plt.gca()
     ax.set_facecolor('#1E1E1E')
     
-    # Se configuran los estilos para los nodos centrales y vecinos
+    # Configuración de los estilos para los nodos centrales y vecinos
     center_nodes = [n for n, d in G.nodes(data=True) if d.get('is_center', False)]
     neigh_nodes = [n for n, d in G.nodes(data=True) if not d.get('is_center', False)]
     
-    # Se dibuja el nodo central en color dorado y los vecindarios en azul cielo
+    # Colores de los nodos
     nx.draw_networkx_nodes(G, pos, nodelist=center_nodes, node_size=1100, node_color='#FFD700', edgecolors='#2D2D2D', linewidths=1.5, alpha=0.95)
     nx.draw_networkx_nodes(G, pos, nodelist=neigh_nodes, node_size=400, node_color='#3498DB', edgecolors='#2D2D2D', linewidths=1.2, alpha=0.85)
     
@@ -234,7 +234,7 @@ def plot_single_entity_graph(args):
     plt.xlim(-2.8, 2.8)
     plt.ylim(-2.8, 2.8)
     
-    # Se genera la leyenda descriptiva del grafo
+    # Leyenda descriptiva para el grafo
     custom_legend = [
         Line2D([0], [0], color='#5A5A5A', alpha=0.7, lw=1.2, label='Enlace Físico (URL/Hash)'),
         Line2D([0], [0], color='#FF4C4C', lw=2.0, linestyle='--', label='Vínculo Semántico Oculto'),
@@ -249,7 +249,7 @@ def plot_single_entity_graph(args):
 
 def generate_all_entity_graphs():
     """
-    Se orquesta la generación paralela de representaciones gráficas individuales de entidades utilizando multiprocesamiento.
+    Generación paralela de representaciones gráficas de entidades individuales utilizando multiprocesamiento.
     """
     logger.info("Generación de visualizaciones ego de red en progreso.")
     
@@ -265,7 +265,7 @@ def generate_all_entity_graphs():
     df_nodes = pd.read_csv(nodes_path)
     df_edges = pd.read_csv(edges_path)
     
-    # Se asegura la existencia del directorio destino de los gráficos
+    # Asegurar la existencia del directorio destino de los gráficos
     output_dir = RUN_DIR / 'entity_graphs'
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Ruta de destino de gráficos: {output_dir}")
@@ -279,7 +279,7 @@ def generate_all_entity_graphs():
         adj[s].append((t, rel, w, True))
         adj[t].append((s, rel, w, False))
         
-    # Cargar test.csv y obtener las primeras 5 entidades
+    # Cargar test.csv y obtener las primeras 5 entidades (por temas unicamente de pruebas)
     test_csv_path = DATA_RAW_DIR / "test.csv"
     if test_csv_path.exists():
         df_test = pd.read_csv(test_csv_path)
@@ -314,7 +314,7 @@ def generate_all_entity_graphs():
             name = name_map.get(ent_id, ent_id)
             tasks.append((ent_id, name, connections, str(output_dir), name_map))
             
-    # Se limita el volumen a las 10 entidades más críticas para optimizar recursos si no hay filtro por test.csv
+    # Limitación del volumen a las 10 entidades más críticas para optimizar recursos si no hay filtro por test.csv
     if not target_entity_ids:
         max_graphs = 10
         if len(tasks) > max_graphs:

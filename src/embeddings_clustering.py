@@ -16,7 +16,7 @@ from src.config import logger, RUN_DIR, HF_EMBEDDING_MODEL, EMBEDDING_BACKEND, S
 
 def generate_embeddings(texts: pd.Series) -> Tuple[np.ndarray, str]:
     """
-    Se realiza la generación de embeddings vectoriales para la colección de perfiles de texto.
+    Se realiza la generación de embeddings vectoriales para los de perfiles de texto.
     Se implementa un mecanismo de caché en disco para evitar re-cálculos redundantes.
     """
     cache_path = RUN_DIR / 'entity_embeddings_cache.npy'
@@ -34,9 +34,9 @@ def generate_embeddings(texts: pd.Series) -> Tuple[np.ndarray, str]:
             from sentence_transformers import SentenceTransformer
             logger.info(f"Modelo SentenceTransformer: {HF_EMBEDDING_MODEL}")
             model = SentenceTransformer(HF_EMBEDDING_MODEL)
-            # Se realiza la codificación vectorial
+            # Codificación vectorial
             embeddings = model.encode(texts_list, show_progress_bar=True, convert_to_numpy=True)
-            # Se normaliza mediante norma L2 para equivalencia en distancia euclidiana
+            # Normalización mediante L2 para equivalencia en distancia euclidiana
             X = normalize(embeddings, norm='l2', axis=1)
             np.save(cache_path, X)
             logger.info("Cálculo y guardado de embeddings completado.")
@@ -99,7 +99,7 @@ def calculate_cohesion(X: np.ndarray, labels: np.ndarray) -> float:
 def run_clustering_benchmarking(X: np.ndarray) -> Tuple[Dict[str, Any], Dict[str, np.ndarray]]:
     """
     Se ejecutan los algoritmos de K-Means, MiniBatchKMeans, GaussianMixture, Birch, HDBSCAN y
-    Agglomerative para realizar un benchmarking cuantitativo. Se evalúan el coeficiente de silueta y la cohesión.
+    Agglomerative para realizar un benchmarking cuantitativo. Y asi poder evaluar el coeficiente de silueta y la cohesión.
     """
     from sklearn.cluster import MiniBatchKMeans, Birch, AgglomerativeClustering
     from sklearn.mixture import GaussianMixture
@@ -130,7 +130,7 @@ def run_clustering_benchmarking(X: np.ndarray) -> Tuple[Dict[str, Any], Dict[str
         try:
             if n_samples > 1:
                 if name == 'GaussianMixture':
-                    # GMM no tiene fit_predict directo en algunas versiones, usamos fit y predict
+                    # GMM no tiene fit_predict directo en algunas versiones
                     model.fit(X)
                     labels = model.predict(X)
                 else:
@@ -199,14 +199,14 @@ def execute_clustering_pipeline() -> pd.DataFrame:
     df_evidence['snippet_clean'] = df_evidence['snippet'].fillna('').astype(str).str.strip()
     df_evidence['reason_clean'] = df_evidence['review_reason'].fillna('').astype(str).str.strip()
     
-    # Se combinan los campos de fragmento y contexto
+    # Combinación de los campos de fragmento y contexto
     df_evidence['item_text'] = df_evidence.apply(
         lambda r: f"Fragmento: {r['snippet_clean']} | Motivo: {r['reason_clean']}" 
         if r['reason_clean'] else f"Fragmento: {r['snippet_clean']}", 
         axis=1
     )
     
-    # Se realiza la agregación por identificador de entidad
+    # Agregación por identificador de entidad
     grouped_evidence = df_evidence.groupby('entity_id')['item_text'].apply(
         lambda x: " ; ".join(x.unique())
     ).rename('all_evidence')
@@ -217,7 +217,7 @@ def execute_clustering_pipeline() -> pd.DataFrame:
     df_entities = df_entities.merge(grouped_evidence, on='entity_id', how='left')
     df_entities['all_evidence'] = df_entities['all_evidence'].fillna("Sin evidencias recopiladas").replace("", "Sin evidencias recopiladas")
     
-    # Se genera el perfil textual descriptivo
+    # Perfil textual descriptivo
     df_entities['entity_profile_text'] = df_entities.apply(
         lambda r: f"Entidad: {r['entity_name']} | Tipo: {r['entity_type']} | País: {r['country_code']} | Evidencias: {r['all_evidence']}",
         axis=1
@@ -225,7 +225,7 @@ def execute_clustering_pipeline() -> pd.DataFrame:
     
     df_entities['entity_profile_text'] = df_entities['entity_profile_text'].fillna("Sin perfil disponible")
 
-    # Se obtienen embeddings vectoriales del perfil
+    # Embeddings vectoriales
     X, backend = generate_embeddings(df_entities['entity_profile_text'])
     n_entities = len(df_entities)
     
@@ -249,7 +249,7 @@ def execute_clustering_pipeline() -> pd.DataFrame:
         iso_forest_model = IsolationForest(contamination='auto', random_state=42, n_jobs=-1)
         iso_forest_model.fit(X)
         
-        # Se serializan los modelos en la ruta compartida de MLOps
+        # Serialización de los modelos
         joblib.dump(kmeans_model, kmeans_model_path)
         joblib.dump(pca_model, pca_model_path)
         joblib.dump(iso_forest_model, iso_forest_model_path)
@@ -263,7 +263,7 @@ def execute_clustering_pipeline() -> pd.DataFrame:
         kmeans_labels = labels['K-Means']
         hdbscan_labels = labels['HDBSCAN']
         
-        # Se obtienen los scores y predicciones del modelo de aislamiento (Isolation Forest)
+        # Se obtienen los scores y predicciones del modelo Isolation Forest
         raw_scores = iso_forest_model.score_samples(X)
         df_entities['anomaly_score_embedding'] = -raw_scores
         df_entities['is_embedding_outlier'] = np.where(iso_forest_model.predict(X) == -1, 1, 0)
@@ -277,22 +277,22 @@ def execute_clustering_pipeline() -> pd.DataFrame:
         logger.info("Modo de uso/inferencia activo. Carga de modelos en progreso.")
         if not kmeans_model_path.exists() or not pca_model_path.exists() or not iso_forest_model_path.exists():
             raise FileNotFoundError(
-                "Faltan modelos en el registro compartido. Ejecute primero el entrenamiento: python scripts/train_pipeline.py"
+                "Faltan modelos en el registro compartido. Ejecutar primero el entrenamiento: python scripts/train_pipeline.py"
             )
             
         kmeans_model = joblib.load(kmeans_model_path)
         pca_model = joblib.load(pca_model_path)
         iso_forest_model = joblib.load(iso_forest_model_path)
         
-        # Se ejecuta la inferencia con el modelo K-Means
+        # Inferencia con el modelo K-Means
         kmeans_labels = kmeans_model.predict(X)
         
-        # Se realiza la inferencia de anomalías
+        # Inferencia de anomalías
         raw_scores = iso_forest_model.score_samples(X)
         df_entities['anomaly_score_embedding'] = -raw_scores
         df_entities['is_embedding_outlier'] = np.where(iso_forest_model.predict(X) == -1, 1, 0)
         
-        # Se determina la distancia al centroide
+        # Distancia al centroide
         distances = kmeans_model.transform(X)
         dist_to_centroid = np.array([distances[idx, cluster] for idx, cluster in enumerate(kmeans_labels)]) if n_entities > 1 else np.zeros(n_entities)
         df_entities['distance_to_centroid'] = dist_to_centroid
@@ -382,7 +382,7 @@ def execute_clustering_pipeline() -> pd.DataFrame:
     df_entities.to_csv(RUN_DIR / 'consolidated_entities.csv', index=False)
     logger.info(f"Catálogo actualizado en: {RUN_DIR / 'consolidated_entities.csv'}")
 
-    # Se estructuran las métricas comparativas en un DataFrame
+    # Métricas comparativas
     rows = []
     for alg, data in metrics.items():
         rows.append({

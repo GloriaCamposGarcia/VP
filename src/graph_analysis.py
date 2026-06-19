@@ -38,7 +38,7 @@ def perform_topological_analysis(
     logger.info("Análisis topológico de red en progreso.")
     t0 = time.time()
     
-    # 1. Se construye el grafo mediante la estructura nx.Graph
+    # 1. Consturcción del grafo mediante la estructura nx.Graph
     G = nx.Graph()
     for _, row in df_nodes.iterrows():
         G.add_node(
@@ -51,12 +51,12 @@ def perform_topological_analysis(
     for _, row in df_edges.iterrows():
         G.add_edge(row['source'], row['target'], weight=float(row['weight']))
         
-    # 2. Se calculan las métricas de PageRank y centralidad de grado
+    # 2. Métricas de PageRank y centralidad de grado
     logger.info("Cálculo de PageRank y centralidad de grado en progreso.")
     pagerank_scores = nx.pagerank(G, weight='weight')
     degree_scores = dict(G.degree())
     
-    # 3. Se detectan las comunidades Louvain
+    # 3. Detección de las comunidades Louvain
     logger.info("Detección de comunidades Louvain en progreso.")
     communities = louvain_communities(G, weight='weight', seed=42)
     
@@ -66,19 +66,19 @@ def perform_topological_analysis(
         for node in comm:
             node_to_comm[node] = comm_idx
             
-    # 4. Se integran las métricas en la tabla de entidades
+    # 4. Integración de las métricas en la tabla de entidades
     df_nodes_enriched = df_nodes.copy()
     df_nodes_enriched['pagerank'] = df_nodes_enriched['entity_id'].map(pagerank_scores).fillna(0.0)
     df_nodes_enriched['degree'] = df_nodes_enriched['entity_id'].map(degree_scores).fillna(0).astype(int)
     df_nodes_enriched['community_id'] = df_nodes_enriched['entity_id'].map(node_to_comm).fillna(-1).astype(int)
     
-    # 5. Se genera la tabla resumen de comunidades Louvain
+    # 5. Tabla resumen de comunidades Louvain
     comm_summary = []
     for comm_idx, comm in enumerate(communities):
         comm_nodes = list(comm)
         size = len(comm_nodes)
         
-        # Se obtienen los nombres de los miembros principales de la comunidad
+        # Obtención de los nombres de los miembros principales de la comunidad
         names = [G.nodes[n].get('name', n) for n in comm_nodes[:5]]
         
         comm_summary.append({
@@ -104,11 +104,11 @@ def propagate_features_gnn(
     logger.info("Propagación de características relacionales vía GNN en progreso.")
     t0 = time.time()
     
-    # 1. Se crea un mapeo de identificador a índice entero
+    # 1. Mapeo de identificador a índice entero
     node_ids = df_nodes['entity_id'].tolist()
     entity_to_idx = {uid: idx for idx, uid in enumerate(node_ids)}
     
-    # 2. Se prepara y escala la matriz de características de entrada
+    # 2. Preparación y escala de la matriz de características de entrada
     feature_cols = ['sources_evaluated', 'sources_with_hallazgo', 'max_identity_score', 'evidence_items']
     X_raw = df_nodes[feature_cols].copy()
     
@@ -116,7 +116,7 @@ def propagate_features_gnn(
     X_scaled = scaler.fit_transform(X_raw)
     x_tensor = torch.tensor(X_scaled, dtype=torch.float)
     
-    # 3. Se construye el índice tensor de aristas (edge_index)
+    # 3. Construcción del índice tensor de aristas (edge_index)
     valid_edges = df_edges[
         df_edges['source'].isin(entity_to_idx) & df_edges['target'].isin(entity_to_idx)
     ].copy()
@@ -132,7 +132,7 @@ def propagate_features_gnn(
     weights = valid_edges['weight'].values
     edge_weight = torch.tensor(np.concatenate([weights, weights]), dtype=torch.float) if len(weights) > 0 else None
     
-    # 4. Se inicializa y aplica la capa de convolución GCN
+    # 4. Capa de convolución GCN
     in_features = len(feature_cols)
     out_features = 4
     

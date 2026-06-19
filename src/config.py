@@ -20,11 +20,11 @@ if HAS_DOTENV:
 DATA_RAW_DIR = PROJECT_ROOT / os.getenv("DATA_RAW_DIR", "data/raw")
 DATA_PROCESSED_DIR = PROJECT_ROOT / os.getenv("DATA_PROCESSED_DIR", "data/processed")
 
-# Se asegura la existencia física de los directorios de datos
+# Asegurar la existencia física de los directorios de datos
 DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-# Se configuran las rutas específicas para MLOps y cumplimiento (modelos compartidos y ejecuciones)
+# Se configuran las rutas específicas para modelos compartidos y ejecuciones (train/use)
 SHARED_DIR = DATA_PROCESSED_DIR / "shared"
 TRAIN_RUNS_DIR = DATA_PROCESSED_DIR / "train" / "runs"
 USE_RUNS_DIR = DATA_PROCESSED_DIR / "use" / "runs"
@@ -34,7 +34,7 @@ SHARED_DIR.mkdir(parents=True, exist_ok=True)
 TRAIN_RUNS_DIR.mkdir(parents=True, exist_ok=True)
 USE_RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Se define el modo de ejecución por defecto ('use' o 'train')
+# Se define el modo de ejecución por defecto (use o train)
 PIPELINE_MODE = os.getenv("PIPELINE_MODE", "use").strip().lower()
 
 # Se genera un identificador único (RUN_ID) para garantizar trazabilidad y reproducibilidad

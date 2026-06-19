@@ -119,7 +119,7 @@ def run_chain_analysis():
                 df_nodes = df_nodes.drop(columns=cols_to_drop)
             df_nodes = df_nodes.merge(df_consolidated[existing_anomaly_cols], on='entity_id', how='left')
     
-    # Se crea el mapeo asociativo de identificador a nombre y tipo
+    # MAapeo asociativo de identificador a nombre y tipo
     name_map = dict(zip(df_nodes['entity_id'], df_nodes['entity_name']))
     type_map = dict(zip(df_nodes['entity_id'], df_nodes['entity_type']))
     
@@ -134,7 +134,7 @@ def run_chain_analysis():
     outlier_map = dict(zip(df_nodes['entity_id'], df_nodes['is_outlier']))
     
     # 1. Se construye el grafo filtrado
-    # Se filtra el ruido relacional proveniente de descargas globales de listas para evitar mega-cliques
+    # Se filtra el ruido relacional proveniente de descargas globales de listas
     logger.info("Filtrado de ruido relacional global en progreso.")
     
     filtered_edges = df_edges[
@@ -219,11 +219,11 @@ def run_chain_analysis():
                         })
                         path_count += 1
         except Exception as e:
-            logger.error(f"Error procesando caminos para {start_node}: {e}")
+            logger.error(f"Error: procesando caminos para {start_node}: {e}")
             
     df_chains = pd.DataFrame(chains)
     if not df_chains.empty:
-        # Se ordenan los resultados priorizando anomalía y menor cantidad de saltos
+        # Se ordenan los resultados priorizando la anomalía y la menor cantidad de saltos
         df_chains = df_chains.sort_values(
             by=['is_target_anomalous', 'path_hops', 'avg_edge_weight'], 
             ascending=[False, True, False]
@@ -252,7 +252,7 @@ def run_chain_analysis():
         ])
         df_chains.to_csv(RUN_DIR / 'suspicious_chains.csv', index=False)
  
-    # 3. Se realiza la detección de ciclos o bucles relacionales
+    # 3. Detección de ciclos relacionales
     logger.info("Búsqueda de ciclos relacionales en progreso.")
     cycles = []
     try:
@@ -289,7 +289,7 @@ def run_chain_analysis():
             RUN_DIR / 'suspicious_loops.csv', index=False
         )
  
-    # 4. Se generan las representaciones gráficas para las cadenas críticas
+    # 4. Representaciones gráficas de cadenas críticas
     if not df_chains.empty:
         import matplotlib
         matplotlib.use('Agg')
@@ -340,12 +340,12 @@ def run_chain_analysis():
                 step = path_G.nodes[node]['step']
                 pos[node] = np.array([float(step) * 3.5, 0.0])
                 
-            # Se genera el lienzo de visualización más amplio para alojar texto descriptivo
+            # Espacio de visualización
             fig = plt.figure(figsize=(14.0, 5.0), facecolor='#1E1E1E')
             ax = plt.gca()
             ax.set_facecolor('#1E1E1E')
             
-            # Se asignan los colores de los nodos según su tipo
+            # Asignación de colores de los nodos según su tipo
             node_colors = []
             for node in path_G.nodes:
                 nt = path_G.nodes[node]['node_type']
@@ -356,7 +356,7 @@ def run_chain_analysis():
                 else:
                     node_colors.append('#3498DB')
                     
-            # Se dibujan los nodos del camino
+            # Trazado de los nodos del camino
             nx.draw_networkx_nodes(path_G, pos, node_size=1200, node_color=node_colors, edgecolors='#2D2D2D', linewidths=1.5, alpha=0.95)
             
             # Se dibujan las aristas dirigidas del camino con etiquetas descriptivas
@@ -402,7 +402,7 @@ def run_chain_analysis():
                     bbox=dict(facecolor='#2D2D2D', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.2')
                 )
                 
-            # Se dibujan las etiquetas identificadoras y de regulación de las entidades
+            # Etiquetas identificadoras y de regulación de las entidades
             labels = {}
             for n in path_G.nodes:
                 name = path_G.nodes[n]['name']

@@ -14,7 +14,7 @@ from src.config import logger, RUN_DIR, SHARED_DIR, PIPELINE_MODE
 
 class KNNOutlierDetector:
     """
-    Clasificador personalizado para la detección de anomalías basado en la distancia al vecino más cercano (KNN).
+    Detección de anomalías basado en la distancia al vecino más cercano (KNN).
     """
     def __init__(self, contamination=0.05, n_neighbors=5):
         self.contamination = contamination
@@ -41,7 +41,7 @@ class KNNOutlierDetector:
 
 def load_data_for_anomalies() -> pd.DataFrame:
     """
-    Se realiza la carga del conjunto de datos de entidades consolidadas para el análisis de anomalías.
+    Carga del conjunto de datos de entidades para el análisis de anomalías.
     """
     data_path = RUN_DIR / 'consolidated_entities.csv'
     if not data_path.exists():
@@ -53,7 +53,7 @@ def load_data_for_anomalies() -> pd.DataFrame:
 
 def execute_anomaly_pipeline() -> pd.DataFrame:
     """
-    Se ejecuta el flujo completo de detección de anomalías y se exportan las métricas obtenidas.
+    Ejecución del flujo completo de detección de anomalías y exportación de las métricas.
     """
     df = load_data_for_anomalies()
     
