@@ -1,8 +1,8 @@
-# SISTEMA DE CUMPLIMIENTO PLD/AML - ANÁLISIS NO SUPERVISADO Y MLOPS
+# SISTEMA DE CUMPLIMIENTO AML-OSINT
 
-El sistema procesa información proveniente de herramientas de recolección OSINT y transacciones, consolidando perfiles semánticos de entidades, descubriendo vínculos ocultos de similitud semántica mediante embeddings locales, identificando anomalías e inusualidades en su información de forma no supervisada, y modelando la topología de red relacional con comunidades estructurales y análisis de caminos de múltiples saltos.
+El sistema procesa información proveniente de herramientas de recolección OSINT y transacciones, consolidando perfiles semánticos de entidades, descubriendo vínculos ocultos de similitud semántica mediante embeddings locales e identificando anomalías y patrones  de forma no supervisada.
 
-El proyecto incorpora prácticas de MLOps para separar la fase de entrenamiento (ajuste de modelos de agrupamiento y detección de anomalías) de la fase de inferencia o uso (aplicación de los modelos registrados sobre nuevos perfiles).
+Se cuenta con una fase de entrenamiento (ajuste de modelos de agrupamiento y detección de anomalías) y de una fase de inferencia o uso (aplicación de los modelos registrados sobre nuevos perfiles).
 
 ---
 
@@ -11,7 +11,7 @@ El proyecto incorpora prácticas de MLOps para separar la fase de entrenamiento 
 La distribución de archivos del proyecto se organiza de la siguiente manera:
 - **`data/raw/`**: Contiene los archivos CSV de entrada crudos (`evidence_items.csv`, `entity_source_results.csv` y `entity_match_summary.csv`).
 - **`data/processed/`**: Directorio de almacenamiento de datos procesados, el cual se subdivide en:
-  - **`shared/`**: Contiene modelos y artefactos compartidos/registrados (por ejemplo, en `models/`).
+  - **`shared/`**: Contiene modelos y artefactos compartidos/registrados.
   - **`train/runs/`**: Contiene carpetas únicas de ejecución de entrenamiento denominadas con marca de tiempo (`run_YYYY-MM-DD_HH-MM-SS`).
   - **`use/runs/`**: Contiene carpetas únicas de ejecución de uso/inferencia denominadas con marca de tiempo (`run_YYYY-MM-DD_HH-MM-SS`).
 - **`src/`**: Carpeta contenedora de los módulos lógicos del sistema:
@@ -24,10 +24,10 @@ La distribución de archivos del proyecto se organiza de la siguiente manera:
   - `visualization.py`: Genera de forma paralela las visualizaciones ego concéntricas de red para cada entidad con conexiones.
   - `pyspark_scaler.py`: Implementación escalable en PySpark para procesamientos masivos de entidades.
 - **`scripts/`**: Ejecutables principales del pipeline:
-  - `train_pipeline.py`: Orquesta la ejecución del pipeline completo de entrenamiento y ajuste de modelos.
-  - `use_pipeline.py`: Orquesta la ejecución de la fase de uso/inferencia aplicando modelos guardados.
+  - `train_pipeline.py`: Ejecución del pipeline completo de entrenamiento y ajuste de modelos.
+  - `use_pipeline.py`: Ejecución de la fase de uso aplicando modelos guardados.
   - `run_benchmarking.py`: Módulo de compilación del reporte de desempeño y topología.
-- **`docs/`**: Contiene reportes técnicos adicionales y documentación de justificación regulatoria.
+- **`docs/`**: Contiene reportes técnicos adicionales y documentación de justificación.
 - **`tests/`**: Pruebas unitarias para validar las funciones esenciales del sistema.
 
 ---
@@ -65,18 +65,18 @@ Los artefactos generados se guardan en un subdirectorio único bajo:
 `data/processed/train/runs/run_<timestamp>/`
 
 ### Ejecución de la Fase de Uso / Inferencia
-Se procesa el lote de datos de uso, se recuperan los modelos ajustados desde `data/processed/shared/models/` y se ejecuta la inferencia semántica y de detección de anomalías, guardando el reporte en:
+Se procesa el lote de datos de uso, se recuperan los modelos ajustados desde `data/processed/shared/models/` y se ejecuta la inferencia semántica y de detección de anomalías.
 ```bash
 python scripts/use_pipeline.py
 ```
-Los artefactos generados de uso se guardan en un subdirectorio único bajo:
+Los artefactos generados de uso se guardan en el subdirectorio:
 `data/processed/use/runs/run_<timestamp>/`
 
 ---
 
 ## 4. REPORTES GENERADOS Y TRAZABILIDAD
 
-El archivo `benchmarking_report.md` consolidado en formato Markdown se genera automáticamente dentro del directorio de la corrida correspondiente tanto en la fase de entrenamiento como de uso. Este archivo contiene las estadísticas del agrupamiento, el análisis de anomalías, las comunidades de red (Louvain), y las rutas de caminos y bucles identificados en el análisis relacional.
+El archivo `benchmarking_report.md` se genera automáticamente dentro del directorio de la corrida correspondiente tanto en la fase de entrenamiento como de uso. Este archivo contiene las estadísticas del agrupamiento, el análisis de anomalías, las comunidades de red (Louvain), y las rutas de caminos y bucles identificados en el análisis relacional.
 
 ---
 
