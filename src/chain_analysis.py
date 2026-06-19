@@ -5,7 +5,80 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 from pathlib import Path
-from src.config import logger, RUN_DIR, RUN_DATE
+from src.config import logger, RUN_DIR, RUN_DATE, DATA_RAW_DIR
+import textwrap
+
+def get_entity_evidence_details(entity_id, df_evidence):
+    """
+    Busca en df_evidence las coincidencias para entity_id y devuelve un diccionario
+    con detalles de las listas y motivos de sanción.
+    """
+    if df_evidence.empty or 'entity_id' not in df_evidence.columns:
+        return None
+        
+    sub_ev = df_evidence[df_evidence['entity_id'] == entity_id]
+    if sub_ev.empty:
+        return None
+        
+    details = {
+        'lists': [],
+        'reasons': [],
+        'status': None,
+        'country': None
+    }
+    
+    for _, row in sub_ev.iterrows():
+        source = str(row.get('source_id', '')).strip()
+        if source and source not in details['lists']:
+            details['lists'].append(source)
+            
+        country = str(row.get('country', '')).strip()
+        if country and not details['country']:
+            details['country'] = country
+            
+        # Extraer de extracted_fields
+        ext_fields_str = row.get('extracted_fields', '')
+        if pd.notna(ext_fields_str) and str(ext_fields_str).strip():
+            try:
+                import ast
+                fields = ast.literal_eval(str(ext_fields_str))
+                if isinstance(fields, dict):
+                    reason = fields.get('statement_of_reasons', '') or fields.get('csd_cancellation_reason', '') or fields.get('review_reason', '')
+                    if reason and reason not in details['reasons']:
+                        details['reasons'].append(reason)
+                        
+                    regime = fields.get('regime_name', '')
+                    if regime and f"Regime: {regime}" not in details['reasons']:
+                        details['reasons'].append(f"Regime: {regime}")
+                        
+                    programs = fields.get('programs_json', '')
+                    if programs:
+                        if isinstance(programs, str) and (programs.startswith('[') or programs.startswith('{')):
+                            import json
+                            try:
+                                clean_prog = programs.replace("'", '"')
+                                prog_list = json.loads(clean_prog)
+                                if isinstance(prog_list, list):
+                                    for p in prog_list:
+                                        if f"Prog: {p}" not in details['reasons']:
+                                            details['reasons'].append(f"Prog: {p}")
+                            except Exception:
+                                pass
+                        elif f"Prog: {programs}" not in details['reasons']:
+                            details['reasons'].append(f"Prog: {programs}")
+                            
+                    status = fields.get('status', '') or fields.get('supposition', '')
+                    if status and not details['status']:
+                        details['status'] = status
+            except Exception:
+                pass
+                
+        # Fallback de motivo en snippet
+        snippet = str(row.get('snippet', '')).strip()
+        if snippet and not details['reasons']:
+            details['reasons'].append(snippet)
+            
+    return details
 
 def is_blacklist_node(node_id: str) -> bool:
     """
@@ -156,6 +229,18 @@ def run_chain_analysis():
             ascending=[False, True, False]
         ).reset_index(drop=True)
         
+        # Cargar test.csv y obtener las primeras 5 entidades
+        test_csv_path = DATA_RAW_DIR / "test.csv"
+        if test_csv_path.exists():
+            df_test = pd.read_csv(test_csv_path)
+            target_entity_ids = df_test['entity_id'].head(5).dropna().tolist()
+            if target_entity_ids:
+                # Filtrar cadenas cuyas fuentes estén en las 5 primeras entidades de test.csv
+                df_chains = df_chains[df_chains['source_blacklist_id'].isin(target_entity_ids)].reset_index(drop=True)
+                # Mantener solo una cadena (la más crítica) por cada entidad (drop duplicates)
+                df_chains = df_chains.drop_duplicates(subset=['source_blacklist_id'], keep='first').reset_index(drop=True)
+                logger.info(f"Cadenas críticas filtradas para test.csv: {len(df_chains)}")
+        
         chains_path = RUN_DIR / 'suspicious_chains.csv'
         df_chains.to_csv(chains_path, index=False)
         logger.info(f"Caminos detectados: {len(df_chains)}. Reporte: {chains_path}")
@@ -213,6 +298,13 @@ def run_chain_analysis():
         output_dir = RUN_DIR / 'critical_chains'
         output_dir.mkdir(parents=True, exist_ok=True)
         
+        # Cargar df_evidence
+        evidence_path = DATA_RAW_DIR / "evidence_items.csv"
+        if evidence_path.exists():
+            df_evidence = pd.read_csv(evidence_path)
+        else:
+            df_evidence = pd.DataFrame()
+            
         top_chains = df_chains.head(5)
         logger.info("Generación de diagramas de cadenas críticas en progreso.")
         
@@ -242,14 +334,14 @@ def run_chain_analysis():
                     relation=relations[i]
                 )
                 
-            # Se define el layout horizontal con espaciado constante
+            # Se define el layout horizontal con espaciado constante más ancho para evitar solapamientos
             pos = {}
             for node in path_G.nodes:
                 step = path_G.nodes[node]['step']
-                pos[node] = np.array([float(step) * 2.0, 0.0])
+                pos[node] = np.array([float(step) * 3.5, 0.0])
                 
-            # Se genera el lienzo de visualización
-            fig = plt.figure(figsize=(10, 3.5), facecolor='#1E1E1E')
+            # Se genera el lienzo de visualización más amplio para alojar texto descriptivo
+            fig = plt.figure(figsize=(14.0, 5.0), facecolor='#1E1E1E')
             ax = plt.gca()
             ax.set_facecolor('#1E1E1E')
             
@@ -265,46 +357,87 @@ def run_chain_analysis():
                     node_colors.append('#3498DB')
                     
             # Se dibujan los nodos del camino
-            nx.draw_networkx_nodes(path_G, pos, node_size=1000, node_color=node_colors, edgecolors='#2D2D2D', linewidths=1.5, alpha=0.95)
+            nx.draw_networkx_nodes(path_G, pos, node_size=1200, node_color=node_colors, edgecolors='#2D2D2D', linewidths=1.5, alpha=0.95)
             
-            # Se dibujan las aristas dirigidas del camino
+            # Se dibujan las aristas dirigidas del camino con etiquetas descriptivas
             for u, v, d in path_G.edges(data=True):
                 rel = d.get('relation', 'unknown')
+                weight = G.edges[u, v].get('weight', 1.0)
                 color = '#FF4C4C' if rel == 'semantic_similarity' else '#95A5A6'
                 style = 'dashed' if rel == 'semantic_similarity' else 'solid'
+                
                 nx.draw_networkx_edges(
                     path_G, pos, edgelist=[(u, v)], width=2.0, 
                     edge_color=color, style=style, arrows=True, 
                     arrowsize=15, connectionstyle="arc3,rad=0.0"
                 )
                 
-                # Se añade la etiqueta del tipo de vínculo en el punto medio de la arista
+                # Se busca si comparten URL o Hash en caso de enlace físico
+                shared_urls = set()
+                shared_hashes = set()
+                if not df_evidence.empty:
+                    shared_urls = set(df_evidence[df_evidence['entity_id'] == u]['url_or_reference'].dropna()) & set(df_evidence[df_evidence['entity_id'] == v]['url_or_reference'].dropna())
+                    shared_hashes = set(df_evidence[df_evidence['entity_id'] == u]['raw_content_hash'].dropna()) & set(df_evidence[df_evidence['entity_id'] == v]['raw_content_hash'].dropna())
+                
+                if rel == 'semantic_similarity':
+                    rel_label = f"Vínculo Semántico\n(Simil: {weight:.1%})"
+                elif shared_urls:
+                    url_val = list(shared_urls)[0]
+                    if "exports/SDN.XML" in url_val:
+                        url_short = "OFAC SDN List"
+                    else:
+                        url_short = url_val.split("//")[-1].split("/")[0]
+                    rel_label = f"Ref. Compartida\n({url_short})"
+                elif shared_hashes:
+                    hash_val = list(shared_hashes)[0]
+                    rel_label = f"Contenido Compartido\n(Hash: {hash_val[:6]})"
+                else:
+                    rel_label = f"Enlace Físico ({rel})"
+                    
                 mid_x = (pos[u][0] + pos[v][0]) / 2
-                mid_y = 0.1
-                rel_label = "Vínculo Semántico" if rel == 'semantic_similarity' else "Enlace Físico"
+                mid_y = 0.08
                 plt.text(
                     mid_x, mid_y, rel_label, color='#FFFFFF', fontsize=7, 
                     ha='center', va='bottom', fontweight='semibold',
-                    bbox=dict(facecolor='#2D2D2D', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2')
+                    bbox=dict(facecolor='#2D2D2D', alpha=0.85, edgecolor='none', boxstyle='round,pad=0.2')
                 )
                 
-            # Se dibujan las etiquetas identificadoras de las entidades
+            # Se dibujan las etiquetas identificadoras y de regulación de las entidades
             labels = {}
             for n in path_G.nodes:
                 name = path_G.nodes[n]['name']
-                labels[n] = f"{name}\n({n})"
+                is_bl = path_G.nodes[n]['node_type'] == 'blacklist'
+                is_out = path_G.nodes[n]['node_type'] == 'outlier'
+                
+                lbl = f"{name}\n({n})"
+                if is_out:
+                    lbl += "\n[ANÓMALO]"
+                    
+                details = get_entity_evidence_details(n, df_evidence)
+                if details:
+                    if details['lists']:
+                        lbl += f"\nListas: {','.join(details['lists'])}"
+                    if details['status']:
+                        lbl += f"\nEstado: {details['status']}"
+                    if details['reasons']:
+                        r_text = "; ".join(details['reasons'])
+                        lbl += f"\nMotivo:\n" + textwrap.fill(r_text, width=32)
+                elif not is_bl and not is_out:
+                    lbl += "\n(Nodo Ordinario)"
+                    
+                labels[n] = lbl
                 
             nx.draw_networkx_labels(
-                path_G, pos, labels=labels, font_size=8, font_color='#FFFFFF', 
-                font_weight='bold', font_family='sans-serif',
+                path_G, pos, labels=labels, font_size=7, font_color='#FFFFFF', 
+                font_family='sans-serif',
                 verticalalignment='top',
-                bbox=dict(facecolor='#1E1E1E', alpha=0.9, edgecolor='#555555', boxstyle='round,pad=0.3')
+                bbox=dict(facecolor='#1E1E1E', alpha=0.95, edgecolor='#555555', boxstyle='round,pad=0.3')
             )
             
-            plt.title(f"Cadena Crítica #{idx+1} (Saltos: {row['path_hops']})\nOrigen: Lista Negra de Control | Fecha: {RUN_DATE}", color='#FFFFFF', fontsize=10, fontweight='bold', pad=15)
+            plt.title(f"Cadena Crítica #{idx+1} (Saltos: {row['path_hops']})\nOrigen: Lista Negra de Control | Fecha: {RUN_DATE}", color='#FFFFFF', fontsize=11, fontweight='bold', pad=15)
             plt.axis('off')
-            plt.xlim(-0.8, float(len(path_nodes) - 1) * 2.0 + 0.8)
-            plt.ylim(-0.8, 0.8)
+            plt.xlim(-1.2, float(len(path_nodes) - 1) * 3.5 + 1.2)
+            plt.ylim(-1.2, 1.2)
             
             out_img_path = output_dir / f"critical_chain_{idx+1}_{RUN_DATE}.png"
             plt.savefig(out_img_path, dpi=120, facecolor='#1E1E1E', bbox_inches='tight')
