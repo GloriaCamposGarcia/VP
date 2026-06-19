@@ -35,6 +35,9 @@ data/processed/*.txt
 data/processed/*.png
 data/processed/entity_graphs/
 data/processed/critical_chains/
+# Ignorar todo en data/processed/train y data/processed/use
+data/processed/train/
+data/processed/use/
 
 # Permitir archivos de métricas y reportes pequeños de benchmarking
 !data/processed/clustering_metrics.csv

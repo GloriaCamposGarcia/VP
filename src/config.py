@@ -9,22 +9,22 @@ try:
 except ImportError:
     HAS_DOTENV = False
 
-# Definir la raíz del proyecto
+# Se determina el directorio raíz del proyecto
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Cargar variables de entorno
+# Se cargan las variables de entorno si la biblioteca dotenv está disponible
 if HAS_DOTENV:
     load_dotenv(dotenv_path=PROJECT_ROOT / '.env')
 
-# Rutas de datos
+# Se definen las rutas base para los conjuntos de datos
 DATA_RAW_DIR = PROJECT_ROOT / os.getenv("DATA_RAW_DIR", "data/raw")
 DATA_PROCESSED_DIR = PROJECT_ROOT / os.getenv("DATA_PROCESSED_DIR", "data/processed")
 
-# Asegurar que las carpetas existan
+# Se asegura la existencia física de los directorios de datos
 DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-# Directorios de entrenamiento, uso y compartidos (MLOps / Compliance)
+# Se configuran las rutas específicas para MLOps y cumplimiento (modelos compartidos y ejecuciones)
 SHARED_DIR = DATA_PROCESSED_DIR / "shared"
 TRAIN_RUNS_DIR = DATA_PROCESSED_DIR / "train" / "runs"
 USE_RUNS_DIR = DATA_PROCESSED_DIR / "use" / "runs"
@@ -34,11 +34,18 @@ SHARED_DIR.mkdir(parents=True, exist_ok=True)
 TRAIN_RUNS_DIR.mkdir(parents=True, exist_ok=True)
 USE_RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Modo de ejecución por defecto: 'use' o 'train'
+# Se define el modo de ejecución por defecto ('use' o 'train')
 PIPELINE_MODE = os.getenv("PIPELINE_MODE", "use").strip().lower()
 
-RUN_DATE = datetime.now().strftime('%Y-%m-%d')
+# Se genera un identificador único (RUN_ID) para garantizar trazabilidad y reproducibilidad
+RUN_ID = os.getenv("RUN_ID", "").strip()
+if not RUN_ID:
+    RUN_ID = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    os.environ["RUN_ID"] = RUN_ID
 
+RUN_DATE = RUN_ID
+
+# Se asigna el directorio de salida correspondiente al modo de ejecución actual
 if PIPELINE_MODE == "train":
     RUN_DIR = TRAIN_RUNS_DIR / f"run_{RUN_DATE}"
 else:
@@ -46,13 +53,13 @@ else:
 
 RUN_DIR.mkdir(parents=True, exist_ok=True)
 
-# Parámetros de embeddings
+# Se configuran los parámetros de representación semántica (embeddings)
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "sentence-transformers").strip().lower()
 HF_EMBEDDING_MODEL = os.getenv("HF_EMBEDDING_MODEL", "all-MiniLM-L6-v2").strip()
 OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
-# Configuración de Logging
+# Se inicializa el servicio de registro de eventos (logging)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -63,4 +70,4 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AML_System")
 
-logger.info(f"Configuración cargada. Backend de embeddings: {EMBEDDING_BACKEND}")
+logger.info(f"configuración: backend={EMBEDDING_BACKEND}")

@@ -4,7 +4,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional
 
-# Configurar variables de entorno de Spark para Windows
+# Se configuran las variables de entorno de Spark para Windows
 os.environ['PYSPARK_PYTHON'] = sys.executable
 os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
 
@@ -20,83 +20,80 @@ except ImportError:
 
 class PySparkAMLScaler:
     """
-    Proporciona un pipeline escalable utilizando PySpark para procesamiento transaccional masivo
-    de entidades y cálculo de agregaciones OSINT de acuerdo a requerimientos Fintech.
+    Se proporciona un pipeline escalable utilizando PySpark para el procesamiento transaccional masivo
+    de entidades y el cálculo de agregaciones OSINT de acuerdo a estándares Fintech.
     """
     def __init__(self):
         self.spark: Optional[SparkSession] = None
 
     def initialize_spark(self) -> bool:
         """
-        Inicializa la sesión local de Spark si PySpark está instalado y configurado.
-        Retorna True si la inicialización es exitosa, False en caso contrario.
+        Se inicializa la sesión local de Spark si PySpark se encuentra instalado y configurado en el sistema.
+        Retorna True en caso de éxito y False en caso contrario.
         """
         if not HAS_PYSPARK:
-            logger.warning("La biblioteca 'pyspark' no está disponible en este entorno.")
+            logger.warning("PySpark no disponible en el entorno actual.")
             return False
         try:
-            logger.info("Inicializando sesión local de PySpark...")
+            logger.info("Inicialización de sesión local PySpark en progreso.")
             self.spark = SparkSession.builder \
                 .appName("AML_Scalable_Aggregation") \
                 .config("spark.sql.shuffle.partitions", "4") \
                 .master("local[*]") \
                 .getOrCreate()
-            logger.info(f"Sesión de Spark inicializada con versión: {self.spark.version}")
+            logger.info(f"Sesión de Spark activa (versión: {self.spark.version}).")
             return True
         except Exception as e:
-            logger.error(f"Error al inicializar Spark: {e}")
+            logger.error(f"Error en inicialización de Spark: {e}")
             return False
 
     def scale_entity_aggregation(self) -> bool:
         """
-        Demuestra la agregación escalable en paralelo cargando los archivos CSV crudos
-        y consolidándolos con funciones nativas de PySpark SQL.
+        Se realiza la agregación escalable en paralelo mediante la carga de archivos de origen CSV
+        y su consolidación a través de funciones nativas de PySpark SQL.
         """
         if not self.spark:
-            logger.warning("Spark no está inicializado. No se puede ejecutar el procesamiento escalable.")
+            logger.warning("Spark no inicializado.")
             return False
             
-        logger.info("Ejecutando agregación escalable en PySpark...")
+        logger.info("Agregación escalable en Spark en progreso.")
         try:
-            # 1. Cargar datasets usando Pandas para evitar errores de alineación por comas en JSON
-            logger.info("Cargando datasets crudos con Pandas...")
+            # 1. Se cargan los conjuntos de datos usando Pandas para prevenir errores de delimitación en JSON
+            logger.info("Carga de conjuntos de datos crudos mediante Pandas.")
             df_sources_pd = pd.read_csv(DATA_RAW_DIR / 'entity_source_results.csv')
             df_evidence_pd = pd.read_csv(DATA_RAW_DIR / 'evidence_items.csv')
             df_match_pd = pd.read_csv(DATA_RAW_DIR / 'entity_match_summary.csv')
             
-            # Normalizar tipos de datos para Spark
+            # Se normalizan los tipos de datos para compatibilidad con Spark
             for df_tmp in [df_sources_pd, df_evidence_pd, df_match_pd]:
                 for col in df_tmp.select_dtypes(include=['object']).columns:
                     df_tmp[col] = df_tmp[col].fillna("").astype(str)
                     
-            # Crear DataFrames de Spark
-            logger.info("Convirtiendo DataFrames a PySpark...")
+            # Se crean los DataFrames nativos de Spark
+            logger.info("Conversión de DataFrames a Spark en progreso.")
             df_sources = self.spark.createDataFrame(df_sources_pd)
             df_evidence = self.spark.createDataFrame(df_evidence_pd)
             df_match = self.spark.createDataFrame(df_match_pd)
             
-            logger.info("Esquema de resultados de fuentes cargado en Spark:")
+            logger.info("Esquema de resultados de fuentes:")
             df_sources.printSchema()
             
-            # 2. Agrupación y cálculo de variables en paralelo
-            # Fuentes evaluadas y fuentes con hallazgos
-            # Se convierte evidence_count a numérico de manera segura
+            # 2. Se realizan la agrupación y el cálculo de variables en paralelo
             df_sources_agg = df_sources.withColumn("evidence_count_num", F.col("evidence_count").cast(IntegerType())).groupBy("entity_id").agg(
                 F.count("source_id").alias("sources_evaluated"),
                 F.sum(F.when(F.col("evidence_count_num") > 0, 1).otherwise(0)).alias("sources_with_hallazgo")
             )
             
-            # Evidencias máximas e ítems de revisión
             df_evidence_agg = df_evidence.withColumn("identity_score_num", F.col("identity_score").cast(DoubleType())).groupBy("entity_id").agg(
                 F.max("identity_score_num").alias("max_identity_score"),
                 F.count("evidence_id").alias("evidence_items"),
                 F.sum(F.when(F.col("review_required").cast("string").rlike("(?i)true|1"), 1).otherwise(0)).alias("review_items")
             )
             
-            # 3. Join en paralelo para consolidación
+            # 3. Se realiza el join en paralelo para la consolidación de atributos
             df_consolidated = df_sources_agg.join(df_evidence_agg, on="entity_id", how="full")
             
-            # Seleccionar y procesar match summary
+            # Se seleccionan y procesan los atributos del resumen de coincidencias
             df_match_sel = df_match.select(
                 F.col("entity_id"),
                 F.col("match_count").cast(IntegerType()).alias("match_count"),
@@ -104,7 +101,7 @@ class PySparkAMLScaler:
             )
             df_consolidated = df_consolidated.join(df_match_sel, on="entity_id", how="full")
             
-            # Rellenar nulos de agregación
+            # Se imputan valores nulos derivados del join
             df_consolidated = df_consolidated.na.fill({
                 "sources_evaluated": 0,
                 "sources_with_hallazgo": 0,
@@ -115,30 +112,30 @@ class PySparkAMLScaler:
                 "sources_hit": ""
             })
             
-            # Asignar lógica de decisión general
+            # Se asigna la lógica para la decisión general
             df_consolidated = df_consolidated.withColumn(
                 "overall_decision",
                 F.when(F.col("review_items") > 0, "needs_review")
                 .otherwise(F.when(F.col("evidence_items") > 0, "accepted").otherwise("no_match"))
             )
             
-            # Mostrar una muestra en consola
-            logger.info("Muestra de agregaciones procesadas en PySpark:")
+            # Se muestra una muestra de los resultados en la salida estándar
+            logger.info("Muestra de datos consolidados:")
             df_consolidated.show(5)
             
-            # 4. Guardar los resultados en formato optimizado Parquet para almacenamiento masivo
+            # 4. Se persisten los resultados en formato optimizado Parquet
             output_parquet_path = str(RUN_DIR / 'pyspark_entities.parquet')
-            logger.info(f"Guardando resultados escalables en Parquet: {output_parquet_path}")
+            logger.info(f"Persistencia en Parquet: {output_parquet_path}")
             df_consolidated.write.mode("overwrite").parquet(output_parquet_path)
             
             return True
         except Exception as e:
-            logger.error(f"Error durante la ejecución de agregación en Spark: {e}")
+            logger.error(f"Error en agregación Spark: {e}")
             return False
             
     def close_spark(self):
         """
-        Cierra la sesión activa de Spark para liberar recursos del clúster.
+        Se realiza el cierre de la sesión activa de Spark para la liberación de los recursos del sistema.
         """
         if self.spark:
             self.spark.stop()
@@ -146,7 +143,7 @@ class PySparkAMLScaler:
 
 def execute_pyspark_pipeline() -> bool:
     """
-    Orquesta la ejecución del pipeline escalable en PySpark.
+    Se orquesta la ejecución completa del pipeline escalable en PySpark.
     """
     scaler = PySparkAMLScaler()
     success = False

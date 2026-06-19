@@ -1,18 +1,18 @@
 import sys
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from datetime import datetime
 
-# Añadir la raíz del proyecto al path
+# Se añade la raíz del proyecto al path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
 
-from src.config import logger, RUN_DIR, RUN_DATE
+from src.config import logger, RUN_DIR, RUN_DATE, PROJECT_ROOT
 
 def to_markdown_table(df: pd.DataFrame) -> str:
     """
-    Convierte un DataFrame de Pandas a una cadena en formato de tabla Markdown.
-    Evita la necesidad de dependencias externas como 'tabulate'.
+    Se convierte un DataFrame de Pandas a formato de tabla de Markdown.
     """
     headers = df.columns.tolist()
     header_row = "| " + " | ".join(headers) + " |"
@@ -32,26 +32,28 @@ def to_markdown_table(df: pd.DataFrame) -> str:
 
 def run_benchmarking_reporting():
     """
-    Consolida las métricas de los módulos de agrupamiento semántico, detección de anomalías
-    y análisis de grafos no supervisados en un reporte formal de descubrimiento de patrones.
+    Se consolidan las métricas de agrupamiento semántico, detección de anomalías
+    y análisis de grafos no supervisados en un reporte consolidado de descubrimiento de patrones.
     """
-    # Intentar generar las visualizaciones individuales por Entity ID
+    run_dir_rel = RUN_DIR.relative_to(PROJECT_ROOT)
+    
+    # Se intenta generar las visualizaciones individuales por Entity ID
     try:
         from src.visualization import generate_all_entity_graphs
         generate_all_entity_graphs()
     except Exception as e:
         logger.error(f"Error al generar las visualizaciones de red por entidad: {e}")
 
-    # Intentar ejecutar el análisis de cadenas
+    # Se intenta ejecutar el análisis relacional de cadenas
     try:
         from src.chain_analysis import run_chain_analysis
         run_chain_analysis()
     except Exception as e:
         logger.error(f"Error al ejecutar el análisis de cadenas: {e}")
 
-    logger.info("Iniciando consolidación de métricas de patrones no supervisados...")
+    logger.info("Consolidación de métricas en progreso.")
     
-    # Rutas de los archivos de métricas
+    # Se definen las rutas de los archivos de métricas
     clustering_path = RUN_DIR / 'clustering_metrics.csv'
     anomaly_path = RUN_DIR / 'anomaly_metrics.csv'
     nodes_path = RUN_DIR / 'graph_enriched_entities.csv'
@@ -61,7 +63,7 @@ def run_benchmarking_reporting():
     chains_path = RUN_DIR / 'suspicious_chains.csv'
     loops_path = RUN_DIR / 'suspicious_loops.csv'
     
-    # Cargar y verificar
+    # Se cargan y verifican los conjuntos de datos de métricas
     df_cluster = pd.read_csv(clustering_path) if clustering_path.exists() else None
     df_anom = pd.read_csv(anomaly_path) if anomaly_path.exists() else None
     df_nodes = pd.read_csv(nodes_path) if nodes_path.exists() else (pd.read_csv(RUN_DIR / 'consolidated_entities.csv') if (RUN_DIR / 'consolidated_entities.csv').exists() else None)
@@ -100,9 +102,72 @@ Propósito: Identificar perfiles de comportamiento inusuales y outliers textuale
     if df_anom is not None:
         report_content += "\n### Tabla de Anomalías Cuantitativas Detectadas\n"
         report_content += to_markdown_table(df_anom)
-        report_content += "\n\n*Nota: Los modelos identidican un porcentaje fijo (5%) de entidades con desviaciones de comportamiento operacional en variables OSINT. Adicionalmente, el módulo de embeddings inyecta el flag de outlier de información en cada entidad.*\n"
+        report_content += "\n\n*Nota: Los modelos identifican un porcentaje fijo (5%) de entidades con desviaciones de comportamiento operacional en variables OSINT. Adicionalmente, el módulo de embeddings inyecta el flag de outlier de información en cada entidad.*\n"
     else:
         report_content += "\n[Métricas de Anomalías no disponibles. Ejecute anomaly_detection.py]\n"
+
+    report_content += """
+---
+
+## 2.5 MÓDULO 2.5: Aprendizaje Supervisado (Human-in-the-loop)
+Propósito: Entrenar un clasificador adaptativo (Random Forest) basado en decisiones históricas de analistas de cumplimiento para predecir la probabilidad de sospecha real.
+"""
+    supervised_report = ""
+    if df_nodes is not None and 'is_suspicious_analyst' in df_nodes.columns:
+        logger.info("Entrenamiento de RandomForest supervisado en progreso.")
+        try:
+            from sklearn.ensemble import RandomForestClassifier
+            from sklearn.model_selection import train_test_split
+            from sklearn.metrics import f1_score, recall_score
+            import joblib
+            
+            # Se preparan las variables explicativas y el vector objetivo
+            features = ['evidence_items', 'max_identity_score', 'sources_with_hallazgo']
+            features = [f for f in features if f in df_nodes.columns]
+            
+            X = df_nodes[features].fillna(0)
+            y = df_nodes['is_suspicious_analyst'].fillna(0).astype(int)
+            
+            if len(np.unique(y)) > 1:
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+                
+                clf = RandomForestClassifier(n_estimators=100, random_state=42)
+                clf.fit(X_train, y_train)
+                
+                y_pred = clf.predict(X_test)
+                f1 = f1_score(y_test, y_pred, zero_division=0)
+                rec = recall_score(y_test, y_pred, zero_division=0)
+                
+                # Se realiza la persistencia del modelo ajustado en el registro compartido
+                joblib.dump(clf, RUN_DIR.parent.parent / 'shared' / 'models' / 'supervised_classifier.pkl')
+                
+                supervised_report = f"""
+### Desempeño del Clasificador RandomForest (Evaluación en Test)
+| Métrica | Valor | Objetivo Regulativo |
+| --- | --- | --- |
+| **F1-Score** | {f1:.4f} | >0.82 |
+| **Recall (Sensibilidad)** | {rec:.4f} | Máxima cobertura de lavadores reales |
+
+*Nota: Modelo entrenado con etiquetas de analistas obtenidas del CMS. Modelo serializado guardado en `shared/models/supervised_classifier.pkl`.*
+"""
+            else:
+                supervised_report = "\n[Datos insuficientes para entrenamiento supervisado (solo una clase presente en is_suspicious_analyst)]\n"
+        except Exception as e:
+            logger.error(f"Error entrenando clasificador supervisado: {e}")
+            supervised_report = f"\n[Error entrenando clasificador supervisado: {e}]\n"
+    else:
+        supervised_report = """
+### Estado del Modelo Supervisado: **DESACTIVADO**
+*No se encontraron etiquetas de decisiones del analista ('is_suspicious_analyst') en los datos de entrada crudos.*
+
+#### Requisitos de Habilitación para el Clasificador Supervisado en Producción:
+1. **Extracción de Decisiones**: Se requiere exportar las resoluciones del analista desde el sistema de gestión de casos (CMS), asignando una etiqueta binaria:
+   - `1`: Confirmado Sospechoso / Reporte de Operación Inusual (ROI) enviado.
+   - `0`: Alerta Cerrada / Homónimo / Falso Positivo.
+2. **Ingesta de Datos**: Se debe integrar esta columna bajo el nombre `is_suspicious_analyst` en el archivo de entrada `entity_match_summary.csv` en `data/raw/`.
+3. **Entrenamiento Automatizado**: Al ejecutar los scripts `train_pipeline.py` o `use_pipeline.py`, el pipeline identificará la presencia de la columna, ajustará un modelo `RandomForestClassifier` y lo registrará en `data/processed/shared/models/supervised_classifier.pkl` para su posterior uso predictivo.
+"""
+    report_content += supervised_report
 
     report_content += """
 ---
@@ -112,10 +177,10 @@ Propósito: Mapear la conectividad implícita de las entidades y agruparlas en c
 """
 
     if df_nodes is not None and df_edges is not None:
-        # Calcular estadísticas
+        # Se calculan las estadísticas estructurales del grafo
         total_nodes = len(df_nodes)
         
-        # Filtrar relaciones
+        # Se filtran los tipos de relación para el análisis descriptivo
         shared_ref = len(df_edges[df_edges['relation_type'] == 'shared_reference'])
         shared_cont = len(df_edges[df_edges['relation_type'] == 'shared_content'])
         sem_sim = len(df_edges[df_edges['relation_type'] == 'semantic_similarity'])
@@ -158,7 +223,7 @@ Propósito: Mapear la conectividad implícita de las entidades y agruparlas en c
 ## 4. ANÁLISIS VISUAL DE LA RED Y VÍNCULOS OCULTOS
 Se han generado visualizaciones de red individuales (grafo ego de 1 salto) por cada Entity ID con conexiones en el siguiente directorio:
 
-- **Directorio de Gráficos de Entidades**: [data/processed/run_{RUN_DATE}/entity_graphs/](file:///{str((RUN_DIR / 'entity_graphs').as_posix())}/)
+- **Directorio de Gráficos de Entidades**: [{run_dir_rel.as_posix()}/entity_graphs/](file:///{str((RUN_DIR / 'entity_graphs').as_posix())}/)
 
 Cada imagen dispone de forma concéntrica a los vecinos alrededor de la entidad consultada (nodo dorado central), permitiendo identificar claramente:
 - **Líneas grises continuas**: Conexiones físicas conocidas (URLs o hashes de contenido compartidos).
@@ -196,12 +261,12 @@ Propósito: Rastrear caminos de relación indirectos (hasta 3 saltos) desde list
     else:
         report_content += "\n[No se detectaron bucles relacionales cerrados en este conjunto de datos]\n"
 
-    # Escribir el reporte en processed
+    # Se escribe el reporte final en el directorio de la corrida
     report_output_path = RUN_DIR / 'benchmarking_report.md'
     with open(report_output_path, 'w', encoding='utf-8') as f:
         f.write(report_content)
         
-    logger.info(f"Reporte de Descubrimiento de Patrones exportado en: {report_output_path}")
+    logger.info(f"Reporte exportado en: {report_output_path}")
     print("\n" + "="*80)
     import sys
     out_encoding = sys.stdout.encoding or 'utf-8'
@@ -222,7 +287,7 @@ if __name__ == '__main__':
         os.environ["PIPELINE_MODE"] = args.mode
         import src.config
         importlib.reload(src.config)
-        # Actualizar la variable RUN_DIR y RUN_DATE importada
-        from src.config import RUN_DIR, RUN_DATE
+        # Se actualizan las variables de ejecución importadas
+        from src.config import RUN_DIR, RUN_DATE, PROJECT_ROOT
         
     run_benchmarking_reporting()

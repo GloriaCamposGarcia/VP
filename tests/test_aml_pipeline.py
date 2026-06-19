@@ -9,13 +9,13 @@ from src.embeddings_clustering import calculate_cohesion
 
 class TestAMLPipeline(unittest.TestCase):
     """
-    Define las pruebas unitarias para validar la integridad de la lógica de negocio
+    Se definen las pruebas unitarias para validar la integridad de la lógica de negocio
     y el procesamiento de datos del sistema de cumplimiento PLD/AML.
     """
 
     def setUp(self):
         """
-        Prepara los datos mínimos de prueba para la ejecución de las aserciones.
+        Se realiza la preparación de los datos mínimos de prueba para la ejecución de las aserciones.
         """
         self.df_sources_mock = pd.DataFrame([
             {
@@ -51,13 +51,14 @@ class TestAMLPipeline(unittest.TestCase):
                 'input_entity_type': 'PF',
                 'sources_hit': 'OFAC_SDN',
                 'match_count': 2,
-                'matches_json': '[]'
+                'matches_json': '[]',
+                'is_suspicious_analyst': 1
             }
         ])
 
     def test_entity_catalog_parsing(self):
         """
-        Verifica que el catálogo de entidades extraiga y normalice los registros correctamente
+        Se verifica que el catálogo de entidades extraiga y normalice los registros correctamente
         desde la representación serializada de query_used.
         """
         df_entities = parse_entity_catalog(self.df_sources_mock, self.df_evidence_mock, self.df_match_mock)
@@ -69,8 +70,8 @@ class TestAMLPipeline(unittest.TestCase):
 
     def test_entity_feature_consolidation(self):
         """
-        Verifica que la agregación cuantitativa a nivel entidad se consolide adecuadamente,
-        así como el cálculo de la decisión general.
+        Se verifica que la agregación cuantitativa a nivel de entidad se consolide adecuadamente,
+        así como el cálculo de la decisión general del pipeline.
         """
         df_entities = parse_entity_catalog(self.df_sources_mock, self.df_evidence_mock, self.df_match_mock)
         df_consolidated = consolidate_entity_features(df_entities, self.df_sources_mock, self.df_evidence_mock, self.df_match_mock)
@@ -82,23 +83,23 @@ class TestAMLPipeline(unittest.TestCase):
         self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-02', 'overall_decision'].values[0], 'no_match')
         self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'match_count'].values[0], 2)
         self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'sources_hit'].values[0], 'OFAC_SDN')
+        self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-01', 'is_suspicious_analyst'].values[0], 1)
+        self.assertEqual(df_consolidated.loc[df_consolidated['entity_id'] == 'OFAC-02', 'is_suspicious_analyst'].values[0], 0)
 
     def test_calculate_cohesion_metric(self):
         """
-        Verifica que la cohesión de clústeres retorne valores esperados para distancias simuladas.
+        Se verifica que la cohesión de clústeres retorne valores esperados para distancias simuladas.
         """
-        # Crear matriz de puntos donde la cohesión es calculable
         X = np.array([[1.0, 1.0], [1.1, 0.9], [5.0, 5.0], [5.2, 4.8]])
         labels = np.array([0, 0, 1, 1])
         cohesion = calculate_cohesion(X, labels)
         
-        # Debe retornar un número flotante válido y menor que la distancia inter-clúster
         self.assertTrue(cohesion > 0.0)
         self.assertTrue(cohesion < 1.0)
 
     def test_pipeline_modes_and_registry(self):
         """
-        Valida que los directorios del registro compartido y las corridas por modo
+        Se valida que los directorios del registro compartido y las corridas por modo
         se definan correctamente de acuerdo a las variables del sistema.
         """
         from src.config import SHARED_DIR, TRAIN_RUNS_DIR, USE_RUNS_DIR

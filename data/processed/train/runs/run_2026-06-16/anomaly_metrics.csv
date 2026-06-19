@@ -1,4 +1,0 @@
-Algoritmo,Num_Anomalias_Detectadas,Tiempo_Ejecucion_Segs
-IsolationForest,191,0.22756743431091309
-OneClassSVM,1199,0.05067014694213867
-LocalOutlierFactor,111,0.07457876205444336

@@ -13,19 +13,19 @@ from src.config import logger, RUN_DIR, SHARED_DIR, PIPELINE_MODE
 
 def load_data_for_anomalies() -> pd.DataFrame:
     """
-    Carga el dataset de entidades consolidadas para el análisis de anomalías.
+    Se realiza la carga del conjunto de datos de entidades consolidadas para el análisis de anomalías.
     """
     data_path = RUN_DIR / 'consolidated_entities.csv'
     if not data_path.exists():
         raise FileNotFoundError(f"No se encontró el archivo de entidades en {data_path}.")
     
     df = pd.read_csv(data_path)
-    logger.info(f"Dataset cargado con {len(df)} registros para detección de anomalías.")
+    logger.info(f"Datos cargados para anomalías. Total registros: {len(df)}")
     return df
 
 def execute_anomaly_pipeline() -> pd.DataFrame:
     """
-    Ejecuta el pipeline de detección de anomalías y exporta las métricas e indicadores.
+    Se ejecuta el flujo completo de detección de anomalías y se exportan las métricas obtenidas.
     """
     df = load_data_for_anomalies()
     
@@ -41,17 +41,17 @@ def execute_anomaly_pipeline() -> pd.DataFrame:
     results = []
 
     if PIPELINE_MODE == "train":
-        logger.info("Fase de ENTRENAMIENTO activa. Ajustando StandardScaler y modelos de anomalías...")
+        logger.info("Modo de entrenamiento activo. Ajuste de StandardScaler y modelos de anomalías en progreso.")
         
-        # 1. Ajustar scaler
+        # 1. Se ajusta el modelo StandardScaler
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
         joblib.dump(scaler, scaler_path)
-        logger.info("StandardScaler fiteado y guardado en shared/models/scaler.pkl")
+        logger.info("StandardScaler guardado en: shared/models/scaler.pkl")
         
-        # 2. Entrenar modelos con novelty=True para LOF
+        # 2. Se realiza el entrenamiento de los modelos no supervisados con ratio de contaminación
         contamination_ratio = 0.05
-        logger.info(f"Ratio de contaminación para entrenamiento: {contamination_ratio:.4f}")
+        logger.info(f"Parámetro de contaminación: {contamination_ratio:.4f}")
         
         models = {
             'IsolationForest': IsolationForest(
@@ -66,19 +66,19 @@ def execute_anomaly_pipeline() -> pd.DataFrame:
             ),
             'LocalOutlierFactor': LocalOutlierFactor(
                 contamination=contamination_ratio, 
-                novelty=True, # Permitir predict inductivo
+                novelty=True,
                 n_jobs=-1
             )
         }
         
         trained_models = {}
         for name, clf in models.items():
-            logger.info(f"Entrenando modelo no supervisado: {name}...")
+            logger.info(f"Entrenamiento de modelo {name} en progreso.")
             t0 = time.time()
             clf.fit(X_scaled)
             elapsed_time = time.time() - t0
             
-            # Predicciones e indicadores
+            # Se calculan las predicciones y scores de anomalía
             raw_pred = clf.predict(X_scaled)
             scores = -clf.score_samples(X_scaled)
             y_pred = np.where(raw_pred == -1, 1, 0)
@@ -95,22 +95,21 @@ def execute_anomaly_pipeline() -> pd.DataFrame:
             
             trained_models[name] = clf
             
-        # Serializar modelos
+        # Se realiza la persistencia de los modelos entrenados
         joblib.dump(trained_models['IsolationForest'], if_path)
         joblib.dump(trained_models['OneClassSVM'], svm_path)
         joblib.dump(trained_models['LocalOutlierFactor'], lof_path)
         
-        # También guardar el mejor modelo en RUN_DIR por auditoría local
+        # Se guarda una copia del Isolation Forest en el directorio local de auditoría
         joblib.dump(trained_models['IsolationForest'], RUN_DIR / 'best_anomaly_model.pkl')
-        logger.info("Modelos de anomalías serializados y guardados en shared/models/")
+        logger.info("Modelos de anomalías guardados en: shared/models/")
 
     else: # PIPELINE_MODE == "use"
-        logger.info("Fase de USO/INFERENCIA activa. Cargando StandardScaler y modelos de anomalías...")
+        logger.info("Modo de uso/inferencia activo. Carga de StandardScaler y modelos en progreso.")
         
         if not scaler_path.exists() or not if_path.exists() or not svm_path.exists() or not lof_path.exists():
             raise FileNotFoundError(
-                "Faltan modelos en el registro compartido. Debe ejecutar el pipeline de entrenamiento primero: "
-                "python scripts/train_pipeline.py"
+                "Faltan modelos en el registro compartido. Debe ejecutar el entrenamiento: python scripts/train_pipeline.py"
             )
             
         scaler = joblib.load(scaler_path)
@@ -120,11 +119,11 @@ def execute_anomaly_pipeline() -> pd.DataFrame:
             'LocalOutlierFactor': joblib.load(lof_path)
         }
         
-        # Inferencia: aplicar transform sin fit
+        # Se ejecuta la inferencia aplicando la transformación del scaler cargado sin fit
         X_scaled = scaler.transform(X)
         
         for name, clf in models.items():
-            logger.info(f"Inferencia con modelo: {name}...")
+            logger.info(f"Inferencia con modelo {name} en progreso.")
             t0 = time.time()
             raw_pred = clf.predict(X_scaled)
             scores = -clf.score_samples(X_scaled)
@@ -142,19 +141,19 @@ def execute_anomaly_pipeline() -> pd.DataFrame:
                 'Tiempo_Ejecucion_Segs': elapsed_time
             })
             
-        # Guardar el IsolationForest cargado localmente en RUN_DIR por compatibilidad
+        # Se persiste localmente el Isolation Forest cargado
         joblib.dump(models['IsolationForest'], RUN_DIR / 'best_anomaly_model.pkl')
 
     df_bench = pd.DataFrame(results)
     
-    # Exportar los datos actualizados de las entidades
+    # Se exporta el catálogo de entidades enriquecido con indicadores
     df_enriched.to_csv(RUN_DIR / 'consolidated_entities.csv', index=False)
-    logger.info(f"Catálogo de entidades actualizado con anomalías en {RUN_DIR / 'consolidated_entities.csv'}")
+    logger.info(f"Catálogo con anomalías guardado en: {RUN_DIR / 'consolidated_entities.csv'}")
     
-    # Exportar resultados de benchmarking
+    # Se persisten los resultados del benchmarking cuantitativo
     df_bench.to_csv(RUN_DIR / 'anomaly_metrics.csv', index=False)
     
-    logger.info("\n--- METRICAS DE DETECCION DE ANOMALIAS (UNSUPERVISED) ---")
+    logger.info("\n--- MÉTRICAS DE DETECCIÓN DE ANOMALÍAS ---")
     logger.info(f"\n{df_bench.to_string(index=False)}")
     
     return df_bench

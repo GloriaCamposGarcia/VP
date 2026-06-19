@@ -9,7 +9,7 @@ from src.config import logger, RUN_DIR, RUN_DATE
 
 def is_blacklist_node(node_id: str) -> bool:
     """
-    Identifica si un nodo pertenece a una lista negra de sanciones según su prefijo.
+    Se identifica si un nodo pertenece a una lista de control de sanciones según su prefijo de origen.
     """
     blacklist_prefixes = [
         'OFAC_SDN', 'EU_FINANCIAL_SANCTIONS', 'UN_CONSOLIDATED', 
@@ -20,10 +20,10 @@ def is_blacklist_node(node_id: str) -> bool:
 
 def run_chain_analysis():
     """
-    Analiza caminos indirectos (hasta 3 saltos) y bucles relacionales
-    entre entidades en listas negras y entidades operativas ordinarias/anómalas.
+    Se analizan los caminos relacionales indirectos (hasta 3 saltos) y bucles relacionales
+    entre entidades sancionadas y perfiles operativos ordinarios o anómalos.
     """
-    logger.info("Iniciando análisis de cadenas relacionales y caminos multi-salto (AML)...")
+    logger.info("Análisis de cadenas relacionales y caminos multi-salto en progreso.")
     
     nodes_path = RUN_DIR / 'graph_enriched_entities.csv'
     edges_path = RUN_DIR / 'entity_edges.csv'
@@ -34,25 +34,23 @@ def run_chain_analysis():
     df_nodes = pd.read_csv(nodes_path)
     df_edges = pd.read_csv(edges_path)
     
-    # Asegurar que se carguen las columnas de anomalía desde consolidated_entities.csv si no están en graph_enriched_entities.csv
+    # Se cargan las columnas de anomalía desde consolidated_entities.csv si no están en graph_enriched_entities.csv
     consolidated_path = RUN_DIR / 'consolidated_entities.csv'
     if consolidated_path.exists():
         df_consolidated = pd.read_csv(consolidated_path)
         anomaly_cols = ['entity_id', 'anomaly_isolationforest', 'anomaly_oneclasssvm', 'anomaly_localoutlierfactor', 'is_embedding_outlier']
         existing_anomaly_cols = [c for c in anomaly_cols if c in df_consolidated.columns]
         if len(existing_anomaly_cols) > 1:
-            # Eliminar si existen previamente para evitar duplicados en el merge
             cols_to_drop = [c for c in existing_anomaly_cols if c in df_nodes.columns and c != 'entity_id']
             if cols_to_drop:
                 df_nodes = df_nodes.drop(columns=cols_to_drop)
             df_nodes = df_nodes.merge(df_consolidated[existing_anomaly_cols], on='entity_id', how='left')
     
-    # Mapeo rápido de ID a Nombre y Tipo
+    # Se crea el mapeo asociativo de identificador a nombre y tipo
     name_map = dict(zip(df_nodes['entity_id'], df_nodes['entity_name']))
     type_map = dict(zip(df_nodes['entity_id'], df_nodes['entity_type']))
     
-    # Identificar cuáles nodos ordinarios son "anómalos" según los modelos
-    # (flagged por Isolation Forest o OneClassSVM o LOF)
+    # Se determinan los outliers según el conjunto de modelos
     df_nodes['is_outlier'] = (
         (df_nodes.get('anomaly_isolationforest', 0) == 1) |
         (df_nodes.get('anomaly_oneclasssvm', 0) == 1) |
@@ -62,18 +60,15 @@ def run_chain_analysis():
     
     outlier_map = dict(zip(df_nodes['entity_id'], df_nodes['is_outlier']))
     
-    # 1. CONSTRUCCIÓN DEL GRAFO FILTRADO
-    # Para evitar las mega-cliques artificiales formadas por compartir el mismo URL
-    # de descarga global de listas negras (que generan millones de aristas 'shared_reference'),
-    # filtramos estas aristas a menos que tengan alta relevancia (ej. múltiples coincidencias, peso >= 2.0).
-    # Mantenemos todas las aristas de 'shared_content' y 'semantic_similarity'.
-    logger.info("Filtrando ruido relacional (cliques de URLs globales de descarga)...")
+    # 1. Se construye el grafo filtrado
+    # Se filtra el ruido relacional proveniente de descargas globales de listas para evitar mega-cliques
+    logger.info("Filtrado de ruido relacional global en progreso.")
     
     filtered_edges = df_edges[
         (df_edges['relation_type'] != 'shared_reference') | 
         (df_edges['weight'] >= 2.0)
     ]
-    logger.info(f"Aristas reducidas de {len(df_edges)} a {len(filtered_edges)} para análisis de caminos.")
+    logger.info(f"Aristas filtradas: {len(filtered_edges)} (original: {len(df_edges)}).")
     
     G = nx.Graph()
     for _, row in df_nodes.iterrows():
@@ -92,40 +87,35 @@ def run_chain_analysis():
             weight=float(row['weight'])
         )
         
-    # Clasificar conjuntos de nodos
+    # Se clasifican los conjuntos de nodos del grafo
     blacklist_nodes = [n for n in G.nodes if G.nodes[n].get('is_blacklist', False)]
     ordinary_nodes = [n for n in G.nodes if not G.nodes[n].get('is_blacklist', False)]
     anomalous_ordinary_nodes = [n for n in ordinary_nodes if G.nodes[n].get('is_outlier', False)]
     
-    logger.info(f"Nodos en listas negras: {len(blacklist_nodes)}")
-    logger.info(f"Nodos ordinarios: {len(ordinary_nodes)} (de los cuales {len(anomalous_ordinary_nodes)} son anómalos)")
+    logger.info(f"Nodos en listas de control: {len(blacklist_nodes)}")
+    logger.info(f"Nodos ordinarios: {len(ordinary_nodes)} (anómalos: {len(anomalous_ordinary_nodes)}).")
     
-    # 2. BÚSQUEDA DE CAMINOS (CHAINS) MULTI-SALTO
-    # Buscaremos caminos más cortos desde nodos en listas negras hacia nodos ordinarios anómalos
-    # limitando la longitud máxima a 3 saltos (hops).
+    # 2. Se realiza la búsqueda de caminos multi-salto (cadenas)
     chains = []
-    logger.info("Buscando caminos entre entidades en listas negras y entidades anómalas...")
+    logger.info("Búsqueda de caminos entre listas de control y anomalías en progreso.")
     
-    # Para optimizar, usamos BFS multi-source desde los nodos en listas negras
+    # Se utiliza una búsqueda BFS desde los nodos semilla de listas de control
     path_count = 0
     t0 = time.time()
     
-    for start_node in blacklist_nodes:
+    for start_node in ordinary_nodes:
         if start_node not in G:
             continue
-        # Calcular caminos más cortos desde este nodo semilla de lista negra
-        # limitando el alcance a una profundidad (cut-off) de 3 saltos
+        # Se calculan los caminos más cortos desde el nodo ordinario/anómalo con un límite de profundidad de 3 saltos
         try:
             paths = nx.single_source_shortest_path(G, start_node, cutoff=3)
             for target_node, path in paths.items():
-                # Nos interesan caminos de al menos 3 nodos (2 saltos o más) para representar cadenas indirectas reales (A -> B -> C)
-                # y que el destino sea un nodo ordinario (preferentemente anómalo)
-                if len(path) >= 3 and not G.nodes[target_node].get('is_blacklist', False):
-                    # Solo nos interesan caminos a anómalos o caminos de peso relevante a ordinarios
-                    is_dest_outlier = G.nodes[target_node].get('is_outlier', False)
-                    path_len = len(path) - 1  # número de saltos
+                # El destino debe ser un nodo de lista de control (blacklist)
+                if len(path) >= 3 and G.nodes[target_node].get('is_blacklist', False):
+                    is_start_outlier = G.nodes[start_node].get('is_outlier', False)
+                    path_len = len(path) - 1
                     
-                    # Calcular el peso promedio del camino
+                    # Se calcula el peso de enlace promedio de la trayectoria
                     weights = []
                     relations = []
                     for i in range(path_len):
@@ -136,18 +126,22 @@ def run_chain_analysis():
                         
                     avg_weight = float(np.mean(weights))
                     
-                    # Criterio de inclusión: destino es anómalo, o es una conexión corta muy fuerte (peso promedio alto)
-                    if is_dest_outlier or (path_len <= 2 and avg_weight >= 1.0):
+                    # Se evalúa el criterio de inclusión en el reporte de cadenas
+                    if is_start_outlier or (path_len <= 2 and avg_weight >= 1.0):
+                        # Se invierte el camino para reportar desde la lista de control hacia el nodo ordinario
+                        reversed_path = list(reversed(path))
+                        reversed_relations = list(reversed(relations))
+                        
                         chains.append({
-                            'source_blacklist_id': start_node,
-                            'source_blacklist_name': name_map.get(start_node, start_node),
-                            'target_entity_id': target_node,
-                            'target_entity_name': name_map.get(target_node, target_node),
-                            'is_target_anomalous': int(is_dest_outlier),
+                            'source_blacklist_id': target_node,
+                            'source_blacklist_name': name_map.get(target_node, target_node),
+                            'target_entity_id': start_node,
+                            'target_entity_name': name_map.get(start_node, start_node),
+                            'is_target_anomalous': int(is_start_outlier),
                             'path_hops': path_len,
-                            'path_nodes_ids': " -> ".join(path),
-                            'path_nodes_names': " -> ".join([name_map.get(n, n) for n in path]),
-                            'path_relations': " -> ".join(relations),
+                            'path_nodes_ids': " -> ".join(reversed_path),
+                            'path_nodes_names': " -> ".join([name_map.get(n, n) for n in reversed_path]),
+                            'path_relations': " -> ".join(reversed_relations),
                             'avg_edge_weight': avg_weight
                         })
                         path_count += 1
@@ -156,7 +150,7 @@ def run_chain_analysis():
             
     df_chains = pd.DataFrame(chains)
     if not df_chains.empty:
-        # Ordenar por si el destino es anómalo (prioridad), menor cantidad de saltos (proximidad) y mayor peso (fuerza)
+        # Se ordenan los resultados priorizando anomalía y menor cantidad de saltos
         df_chains = df_chains.sort_values(
             by=['is_target_anomalous', 'path_hops', 'avg_edge_weight'], 
             ascending=[False, True, False]
@@ -164,26 +158,24 @@ def run_chain_analysis():
         
         chains_path = RUN_DIR / 'suspicious_chains.csv'
         df_chains.to_csv(chains_path, index=False)
-        logger.info(f"Se detectaron {len(df_chains)} caminos sospechosos en cadena. Reporte guardado en: {chains_path}")
+        logger.info(f"Caminos detectados: {len(df_chains)}. Reporte: {chains_path}")
     else:
-        logger.info("No se encontraron caminos indirectos significativos.")
+        logger.info("Sin caminos indirectos detectados.")
         df_chains = pd.DataFrame(columns=[
             'source_blacklist_id', 'source_blacklist_name', 'target_entity_id', 'target_entity_name',
             'is_target_anomalous', 'path_hops', 'path_nodes_ids', 'path_nodes_names', 'path_relations', 'avg_edge_weight'
         ])
         df_chains.to_csv(RUN_DIR / 'suspicious_chains.csv', index=False)
-
-    # 3. DETECCIÓN DE BUCLES/CICLOS
-    # Detectar ciclos relacionales cerrados en la red que involucren nodos ordinarios
-    # (estos ciclos suelen representar triangulación de recursos/empresas fantasma)
-    logger.info("Buscando bucles/ciclos relacionales cerrados en la red...")
+ 
+    # 3. Se realiza la detección de ciclos o bucles relacionales
+    logger.info("Búsqueda de ciclos relacionales en progreso.")
     cycles = []
     try:
-        # Encontrar la base de ciclos del grafo (solo nodos conectados)
+        # Se calcula la base de ciclos del grafo para longitudes entre 3 y 5
         all_cycles = nx.cycle_basis(G)
         for cycle in all_cycles:
-            if 3 <= len(cycle) <= 5:  # nos interesan ciclos pequeños y significativos (triángulos, cuadrados, pentágonos)
-                # Verificar cuántos nodos del ciclo son anómalos o de listas negras
+            if 3 <= len(cycle) <= 5:
+                # Se cuantifica la presencia de nodos de listas de control y outliers
                 blacklist_in_cycle = sum(1 for n in cycle if G.nodes[n].get('is_blacklist', False))
                 outliers_in_cycle = sum(1 for n in cycle if G.nodes[n].get('is_outlier', False))
                 
@@ -206,14 +198,13 @@ def run_chain_analysis():
         ).reset_index(drop=True)
         cycles_path = RUN_DIR / 'suspicious_loops.csv'
         df_cycles.to_csv(cycles_path, index=False)
-        logger.info(f"Se detectaron {len(df_cycles)} bucles relacionales cerrados. Reporte guardado en: {cycles_path}")
+        logger.info(f"Ciclos detectados: {len(df_cycles)}. Reporte: {cycles_path}")
     else:
         pd.DataFrame(columns=['cycle_length', 'blacklist_count', 'outliers_count', 'cycle_node_ids', 'cycle_node_names']).to_csv(
             RUN_DIR / 'suspicious_loops.csv', index=False
         )
-
-    # 4. GENERACIÓN DE DIAGRAMAS PARA LAS CADENAS MÁS CRÍTICAS
-    # Tomamos las 5 cadenas más críticas y dibujamos diagramas PNG de cadena horizontal.
+ 
+    # 4. Se generan las representaciones gráficas para las cadenas críticas
     if not df_chains.empty:
         import matplotlib
         matplotlib.use('Agg')
@@ -223,16 +214,16 @@ def run_chain_analysis():
         output_dir.mkdir(parents=True, exist_ok=True)
         
         top_chains = df_chains.head(5)
-        logger.info("Dibujando diagramas de las 5 cadenas críticas más relevantes...")
+        logger.info("Generación de diagramas de cadenas críticas en progreso.")
         
         for idx, row in top_chains.iterrows():
             path_nodes = row['path_nodes_ids'].split(" -> ")
             relations = row['path_relations'].split(" -> ")
             
-            # Crear subgrafo lineal para el dibujo
+            # Se construye un subgrafo lineal dirigido para la representación horizontal
             path_G = nx.DiGraph()
             
-            # Agregar nodos con atributos
+            # Se agregan los nodos con sus tipos y atributos de posición
             for i, node_id in enumerate(path_nodes):
                 is_bl = G.nodes[node_id].get('is_blacklist', False)
                 is_out = G.nodes[node_id].get('is_outlier', False)
@@ -243,7 +234,7 @@ def run_chain_analysis():
                     step=i
                 )
                 
-            # Agregar aristas
+            # Se agregan las aristas de relación
             for i in range(len(path_nodes) - 1):
                 path_G.add_edge(
                     path_nodes[i], 
@@ -251,33 +242,32 @@ def run_chain_analysis():
                     relation=relations[i]
                 )
                 
-            # Configurar layout horizontal lineal
+            # Se define el layout horizontal con espaciado constante
             pos = {}
             for node in path_G.nodes:
                 step = path_G.nodes[node]['step']
-                pos[node] = np.array([float(step) * 2.0, 0.0]) # Espaciado x=2, y=0
+                pos[node] = np.array([float(step) * 2.0, 0.0])
                 
-            # Dibujar figura
+            # Se genera el lienzo de visualización
             fig = plt.figure(figsize=(10, 3.5), facecolor='#1E1E1E')
             ax = plt.gca()
             ax.set_facecolor('#1E1E1E')
             
-            # Colores de nodos según tipo
+            # Se asignan los colores de los nodos según su tipo
             node_colors = []
             for node in path_G.nodes:
                 nt = path_G.nodes[node]['node_type']
                 if nt == "blacklist":
-                    node_colors.append('#E74C3C') # Rojo para Lista Negra
+                    node_colors.append('#E74C3C')
                 elif nt == "outlier":
-                    node_colors.append('#E67E22') # Naranja para Anómalo
+                    node_colors.append('#E67E22')
                 else:
-                    node_colors.append('#3498DB') # Azul para Ordinario Intermedio
+                    node_colors.append('#3498DB')
                     
-            # Dibujar nodos
+            # Se dibujan los nodos del camino
             nx.draw_networkx_nodes(path_G, pos, node_size=1000, node_color=node_colors, edgecolors='#2D2D2D', linewidths=1.5, alpha=0.95)
             
-            # Dibujar aristas
-            # Aristas semánticas en rojo discontinuo, físicas en gris continuo
+            # Se dibujan las aristas dirigidas del camino
             for u, v, d in path_G.edges(data=True):
                 rel = d.get('relation', 'unknown')
                 color = '#FF4C4C' if rel == 'semantic_similarity' else '#95A5A6'
@@ -288,7 +278,7 @@ def run_chain_analysis():
                     arrowsize=15, connectionstyle="arc3,rad=0.0"
                 )
                 
-                # Etiqueta de la arista en el centro de la arista
+                # Se añade la etiqueta del tipo de vínculo en el punto medio de la arista
                 mid_x = (pos[u][0] + pos[v][0]) / 2
                 mid_y = 0.1
                 rel_label = "Vínculo Semántico" if rel == 'semantic_similarity' else "Enlace Físico"
@@ -298,7 +288,7 @@ def run_chain_analysis():
                     bbox=dict(facecolor='#2D2D2D', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2')
                 )
                 
-            # Dibujar etiquetas de nodos (Nombre completo de la entidad + ID)
+            # Se dibujan las etiquetas identificadoras de las entidades
             labels = {}
             for n in path_G.nodes:
                 name = path_G.nodes[n]['name']
@@ -319,9 +309,9 @@ def run_chain_analysis():
             out_img_path = output_dir / f"critical_chain_{idx+1}_{RUN_DATE}.png"
             plt.savefig(out_img_path, dpi=120, facecolor='#1E1E1E', bbox_inches='tight')
             plt.close(fig)
-            logger.info(f"Imagen de cadena guardada: {out_img_path}")
+            logger.info(f"Diagrama de cadena guardado en: {out_img_path}")
             
-    logger.info("Análisis de cadenas y triangulación finalizado con éxito.")
+    logger.info("Análisis de cadenas y ciclos finalizado.")
 
 if __name__ == '__main__':
     run_chain_analysis()
